@@ -4,6 +4,7 @@
 
 `web-app` is a standalone Next.js application used to test extraction-to-graph workflows for story narratives.
 It integrates with `llm-layer` over HTTP via a server-side proxy route and now includes a deterministic pronoun-resolution subsystem for observability and debug preview.
+Graph rendering supports two client-side modes over the same extracted event payload: timeline and character relations.
 
 Core goals:
 
@@ -33,10 +34,25 @@ Core goals:
   - Phase 1 keeps schemas unchanged; pronoun outputs are not forwarded upstream.
 
 - `src/lib/graph-transform.ts`
-  - Pure deterministic transformation from `events[]` into graph `nodes[]` and `edges[]`.
+  - Public graph-transform facade preserving the existing import surface.
+  - Dispatches to mode-specific builders under `src/lib/graph-transform/`.
+
+- `src/lib/graph-transform/timeline.ts`
+  - Timeline/event-centric builder.
+  - Orders events by parseable `timeHint` first (ISO date/datetime, absolute ordinals), with deterministic sequence fallback.
+  - Emits per-event `timeOrderingSource` metadata and optional sequence edges.
+
+- `src/lib/graph-transform/character.ts`
+  - Character-relation builder.
+  - Supports:
+    - co-occurrence edges (unordered pair dedup + count aggregation)
+    - action-labeled directed edges (`actor -> target`, label from `event.action`)
+  - Computes relation-density status and dropped-event diagnostics for UI safeguards.
 
 - `src/lib/graph-layout.ts`
-  - Dagre-based layout pass that assigns explicit node positions before rendering in React Flow.
+  - Dagre-based layout pass with mode-aware profiles:
+    - timeline: LR flow
+    - character: TB dense-relation profile
 
 - `src/lib/env.ts` and `src/lib/constants.ts`
   - Environment validation and operational limits (timeouts, max story size, concurrency).
@@ -61,7 +77,14 @@ flowchart LR
   resolver -.->|statsJsonLogOnly| logs[StructuredLogs]
   proxy -->|unchangedRequestBody| upstream[llmLayerExtractEndpoint]
   upstream --> proxy
-  proxy --> clientOut[ClientResponse]
+  proxy --> extractedEvents[ExtractedEvents]
+  extractedEvents --> graphModeSelector[GraphModeSelector]
+  graphModeSelector --> timelineTransform[TimelineTransform]
+  graphModeSelector --> characterTransform[CharacterTransform]
+  timelineTransform --> timelineLayout[TimelineLayout]
+  characterTransform --> characterLayout[CharacterLayout]
+  timelineLayout --> clientOut[ClientResponse]
+  characterLayout --> clientOut
 ```
 
 ## Pronoun Resolver (Phase 1)
@@ -161,6 +184,16 @@ Until checklist completion, Phase 1 remains **log-only** on the server.
 - **Deterministic Graph Model**
   - Event node IDs come from backend `eventId`.
   - Entity node IDs use normalized identity (`trim -> collapse whitespace -> lowercase`).
+  - Timeline mode uses parseable `timeHint` ordering with deterministic fallback metadata.
+  - Character mode supports co-occurrence and action-labeled relation edges with deterministic IDs.
+
+- **Client-Side Mode Switching**
+  - Timeline and Character modes are computed from the same `events[]` payload.
+  - Switching modes does not trigger a new extraction request.
+
+- **Character Density Safeguards**
+  - Character graphs can be edge-dense; transform computes `densityStatus` (`ok|warn|blocked`) from threshold limits.
+  - UI uses transform metadata to warn or block render predictably.
 
 - **Debug Preview is Non-Authoritative**
   - Preview is explicitly "Preview only" and never mutates extraction request body.

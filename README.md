@@ -12,7 +12,10 @@ For architecture details, see [`Architecture.md`](./Architecture.md).
 - Calls `POST /v1/events/extract` through a server-side proxy (`/api/extract`).
 - Validates request and response payloads using local schemas.
 - Converts extracted events to graph nodes/edges with deterministic IDs.
-- Applies `dagre` layout and renders via React Flow.
+- Supports two visualization modes without re-fetching events:
+  - Timeline (timeHint-first with deterministic fallback)
+  - Character relations (co-occurrence or action-labeled edges)
+- Applies mode-aware `dagre` layout and renders via React Flow.
 
 ## Environment Variables
 
@@ -61,12 +64,17 @@ pnpm test
    - response returns `requestId`
    - event count > 0
    - graph renders nodes and edges
-5. Toggle **Include sequence edges** and verify additional edges appear.
-6. Test cancel flow while loading and confirm request stops with user-visible status.
-7. Test large input and verify warning/graph-disable thresholds.
+5. In **Timeline** mode, toggle **Include sequence edges** and verify additional edges appear.
+6. Switch to **Character relations** and validate both edge styles:
+   - Co-occurrence (deduped pair edges with count)
+   - Action-labeled (directed actor -> target edges)
+7. Confirm diagnostics panel updates mode/style/fallback-order/dropped-events.
+8. Test cancel flow while loading and confirm request stops with user-visible status.
+9. Test large input and verify warning/graph-disable thresholds in both modes.
 
 ## Known Limits (MVP)
 
 - Entity resolution is normalization-only (`trim -> collapse whitespace -> lowercase`), not full alias/coreference resolution.
 - Sequence edges are optional and off by default to reduce visual clutter.
-- Graph rendering is capped for very large event volumes.
+- Timeline rendering is capped for very large event volumes.
+- Character relation rendering is capped by edge-density thresholds.

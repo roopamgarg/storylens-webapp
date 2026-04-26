@@ -21,7 +21,10 @@ import { appLimits } from "@/lib/constants";
 import { applyDagreLayout } from "@/lib/graph-layout";
 import {
   transformEventsToGraph,
+  type CharacterEdgeStyle,
   type GraphEdgeData,
+  type GraphTransformMeta,
+  type GraphViewMode,
   type GraphNodeData,
 } from "@/lib/graph-transform";
 import type { ResolverResult } from "@/lib/pronoun-resolver";
@@ -34,6 +37,11 @@ type UiError = {
 
 type PreviewStats = ResolverResult["stats"] & {
   skipReason?: ResolverResult["skipReason"];
+};
+
+export type GraphRenderState = {
+  showLargeGraphWarning: boolean;
+  blockGraphRender: boolean;
 };
 
 const sampleStory = `Aria enters the old fortress and lights a torch.
@@ -64,6 +72,151 @@ function formatElapsedMs(ms: number): string {
   return `${seconds}s`;
 }
 
+export function resolveGraphRenderState(
+  graphMode: GraphViewMode,
+  eventsCount: number,
+  meta: GraphTransformMeta | undefined,
+): GraphRenderState {
+  const showLargeGraphWarning =
+    graphMode === "timeline"
+      ? eventsCount > appLimits.largeGraphWarnEvents
+      : meta?.densityStatus === "warn";
+  const blockGraphRender =
+    graphMode === "timeline"
+      ? eventsCount > appLimits.largeGraphBlockEvents
+      : meta?.densityStatus === "blocked";
+
+  return {
+    showLargeGraphWarning,
+    blockGraphRender,
+  };
+}
+
+type GraphControlsProps = {
+  graphMode: GraphViewMode;
+  characterEdgeStyle: CharacterEdgeStyle;
+  includeSequenceEdges: boolean;
+  showResolverDebug: boolean;
+  allowResolverDebug: boolean;
+  onGraphModeChange: (mode: GraphViewMode) => void;
+  onCharacterEdgeStyleChange: (style: CharacterEdgeStyle) => void;
+  onIncludeSequenceEdgesChange: (include: boolean) => void;
+  onShowResolverDebugChange: (show: boolean) => void;
+};
+
+function GraphControls(props: GraphControlsProps) {
+  return (
+    <div className="space-y-3">
+      <fieldset className="rounded border border-zinc-800 p-2">
+        <legend className="px-1 text-xs text-zinc-400">Graph mode</legend>
+        <div className="flex gap-3 text-sm">
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="graph-mode"
+              value="timeline"
+              checked={props.graphMode === "timeline"}
+              onChange={() => props.onGraphModeChange("timeline")}
+            />
+            Timeline
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="graph-mode"
+              value="character"
+              checked={props.graphMode === "character"}
+              onChange={() => props.onGraphModeChange("character")}
+            />
+            Character relations
+          </label>
+        </div>
+      </fieldset>
+
+      {props.graphMode === "timeline" ? (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={props.includeSequenceEdges}
+            onChange={(event) => props.onIncludeSequenceEdgesChange(event.target.checked)}
+          />
+          Include sequence edges
+        </label>
+      ) : null}
+
+      {props.graphMode === "character" ? (
+        <label className="flex items-center gap-2 text-sm">
+          <span>Edge style:</span>
+          <select
+            value={props.characterEdgeStyle}
+            onChange={(event) => props.onCharacterEdgeStyleChange(event.target.value as CharacterEdgeStyle)}
+            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+          >
+            <option value="cooccurrence">Co-occurrence</option>
+            <option value="action_labeled">Action-labeled</option>
+          </select>
+        </label>
+      ) : null}
+
+      {props.allowResolverDebug ? (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={props.showResolverDebug}
+            onChange={(event) => props.onShowResolverDebugChange(event.target.checked)}
+          />
+          Debug: Pronoun resolver preview
+        </label>
+      ) : null}
+    </div>
+  );
+}
+
+type GraphDiagnosticsProps = {
+  requestId?: string;
+  eventsCount: number;
+  nodesCount: number;
+  edgesCount: number;
+  meta?: GraphTransformMeta;
+};
+
+function GraphDiagnostics(props: GraphDiagnosticsProps) {
+  return (
+    <div className="mt-4 rounded border border-zinc-800 bg-zinc-950 p-3 text-sm">
+      <p>
+        requestId: <span className="text-zinc-300">{props.requestId ?? "n/a"}</span>
+      </p>
+      <p>
+        events: <span className="text-zinc-300">{props.eventsCount}</span>
+      </p>
+      <p>
+        nodes: <span className="text-zinc-300">{props.nodesCount}</span>
+      </p>
+      <p>
+        edges: <span className="text-zinc-300">{props.edgesCount}</span>
+      </p>
+      <p>
+        mode: <span className="text-zinc-300">{props.meta?.mode ?? "n/a"}</span>
+      </p>
+      <p>
+        style: <span className="text-zinc-300">{props.meta?.characterEdgeStyle ?? "n/a"}</span>
+      </p>
+      <p>
+        relationEdges: <span className="text-zinc-300">{props.meta?.relationEdgeCount ?? 0}</span>
+      </p>
+      <p>
+        fallbackOrder: <span className="text-zinc-300">{props.meta?.fallbackOrderCount ?? 0}</span>
+      </p>
+      <p>
+        droppedEvents: <span className="text-zinc-300">{props.meta?.droppedEventCount ?? 0}</span>
+      </p>
+      <p>
+        densityStatus: <span className="text-zinc-300">{props.meta?.densityStatus ?? "ok"}</span>
+      </p>
+    </div>
+  );
+}
+
 export default function Home() {
   const [story, setStory] = useState(sampleStory);
   const [events, setEvents] = useState<Event[]>([]);
@@ -71,6 +224,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<UiError | null>(null);
   const [includeSequenceEdges, setIncludeSequenceEdges] = useState(false);
+  const [graphMode, setGraphMode] = useState<GraphViewMode>("timeline");
+  const [characterEdgeStyle, setCharacterEdgeStyle] = useState<CharacterEdgeStyle>("cooccurrence");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [activeStoryFingerprint, setActiveStoryFingerprint] = useState<string | null>(null);
   const [showResolverDebug, setShowResolverDebug] = useState(false);
@@ -85,16 +240,24 @@ export default function Home() {
   const resolverModuleRef = useRef<Promise<typeof import("@/lib/pronoun-resolver")> | null>(null);
 
   const graph = useMemo(() => {
-    const transformed = transformEventsToGraph(events, { includeSequenceEdges });
-    const laidOutNodes = applyDagreLayout(transformed.nodes, transformed.edges);
+    const transformed = transformEventsToGraph(events, {
+      includeSequenceEdges,
+      mode: graphMode,
+      characterEdgeStyle,
+    });
+    const laidOutNodes = applyDagreLayout(transformed.nodes, transformed.edges, { mode: graphMode });
     return {
       nodes: laidOutNodes,
       edges: transformed.edges,
+      meta: transformed.meta,
     };
-  }, [events, includeSequenceEdges]);
+  }, [events, includeSequenceEdges, graphMode, characterEdgeStyle]);
 
-  const showLargeGraphWarning = events.length > appLimits.largeGraphWarnEvents;
-  const blockGraphRender = events.length > appLimits.largeGraphBlockEvents;
+  const { showLargeGraphWarning, blockGraphRender } = resolveGraphRenderState(
+    graphMode,
+    events.length,
+    graph.meta,
+  );
   const nodesToRender: Node<GraphNodeData>[] = blockGraphRender ? [] : graph.nodes;
   const edgesToRender: Edge<GraphEdgeData>[] = blockGraphRender ? [] : graph.edges;
 
@@ -312,25 +475,17 @@ export default function Home() {
               </button>
             </div>
 
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={includeSequenceEdges}
-                onChange={(event) => setIncludeSequenceEdges(event.target.checked)}
-              />
-              Include sequence edges
-            </label>
-
-            {allowResolverDebug ? (
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={showResolverDebug}
-                  onChange={(event) => setShowResolverDebug(event.target.checked)}
-                />
-                Debug: Pronoun resolver preview
-              </label>
-            ) : null}
+            <GraphControls
+              graphMode={graphMode}
+              characterEdgeStyle={characterEdgeStyle}
+              includeSequenceEdges={includeSequenceEdges}
+              showResolverDebug={showResolverDebug}
+              allowResolverDebug={allowResolverDebug}
+              onGraphModeChange={setGraphMode}
+              onCharacterEdgeStyleChange={setCharacterEdgeStyle}
+              onIncludeSequenceEdgesChange={setIncludeSequenceEdges}
+              onShowResolverDebugChange={setShowResolverDebug}
+            />
           </form>
 
           {allowResolverDebug && showResolverDebug ? (
@@ -390,30 +545,26 @@ export default function Home() {
             </div>
           ) : null}
 
-          <div className="mt-4 rounded border border-zinc-800 bg-zinc-950 p-3 text-sm">
-            <p>
-              requestId: <span className="text-zinc-300">{requestId ?? "n/a"}</span>
-            </p>
-            <p>
-              events: <span className="text-zinc-300">{events.length}</span>
-            </p>
-            <p>
-              nodes: <span className="text-zinc-300">{graph.nodes.length}</span>
-            </p>
-            <p>
-              edges: <span className="text-zinc-300">{graph.edges.length}</span>
-            </p>
-          </div>
+          <GraphDiagnostics
+            requestId={requestId}
+            eventsCount={events.length}
+            nodesCount={graph.nodes.length}
+            edgesCount={graph.edges.length}
+            meta={graph.meta}
+          />
 
           {showLargeGraphWarning ? (
             <p className="mt-3 text-sm text-amber-400">
-              Large graph warning: {events.length} events may impact rendering performance.
+              {graphMode === "timeline"
+                ? `Large graph warning: ${events.length} events may impact rendering performance.`
+                : `Character graph warning: relation edges are above ${graph.meta?.thresholds.warn ?? appLimits.characterGraphWarnEdges}.`}
             </p>
           ) : null}
           {blockGraphRender ? (
             <p className="mt-2 text-sm text-amber-300">
-              Graph rendering disabled above {appLimits.largeGraphBlockEvents} events. Reduce input or
-              improve extraction granularity.
+              {graphMode === "timeline"
+                ? `Graph rendering disabled above ${appLimits.largeGraphBlockEvents} events. Reduce input or improve extraction granularity.`
+                : `Character graph rendering disabled above ${graph.meta?.thresholds.block ?? appLimits.characterGraphBlockEdges} relation edges.`}
             </p>
           ) : null}
 
