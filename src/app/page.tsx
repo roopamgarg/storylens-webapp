@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
-  MiniMap,
   ReactFlow,
   type Edge,
   type Node,
@@ -50,6 +49,12 @@ She discovers a hidden map in a broken chest.
 Borin joins Aria and they agree to protect each other.
 A shadow beast attacks Borin near the gate.
 Aria defends Borin and the beast retreats into the dark.`;
+
+const panelWidths = {
+  left: { default: 420, min: 320, max: 560, collapse: 240 },
+  right: { default: 400, min: 320, max: 560, collapse: 240 },
+  rail: 44,
+};
 
 function mapErrorCodeToMessage(code: ErrorCode): string {
   switch (code) {
@@ -98,22 +103,19 @@ type GraphControlsProps = {
   characterEdgeStyle: CharacterEdgeStyle;
   includeSequenceEdges: boolean;
   usePronounResolver: boolean;
-  showResolverDebug: boolean;
-  allowResolverDebug: boolean;
   onGraphModeChange: (mode: GraphViewMode) => void;
   onCharacterEdgeStyleChange: (style: CharacterEdgeStyle) => void;
   onIncludeSequenceEdgesChange: (include: boolean) => void;
   onUsePronounResolverChange: (enabled: boolean) => void;
-  onShowResolverDebugChange: (show: boolean) => void;
 };
 
 function GraphControls(props: GraphControlsProps) {
   return (
     <div className="space-y-3">
-      <fieldset className="rounded border border-zinc-800 p-2">
-        <legend className="px-1 text-xs text-zinc-400">Graph mode</legend>
-        <div className="flex gap-3 text-sm">
-          <label className="flex items-center gap-2">
+      <fieldset className="rounded-xl border border-white/10 bg-white/5 p-3">
+        <legend className="px-1 text-xs uppercase tracking-wide text-zinc-400">Graph mode</legend>
+        <div className="flex flex-wrap gap-3 text-sm">
+          <label className="flex items-center gap-2 text-zinc-200">
             <input
               type="radio"
               name="graph-mode"
@@ -123,7 +125,7 @@ function GraphControls(props: GraphControlsProps) {
             />
             Timeline
           </label>
-          <label className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-zinc-200">
             <input
               type="radio"
               name="graph-mode"
@@ -137,7 +139,7 @@ function GraphControls(props: GraphControlsProps) {
       </fieldset>
 
       {props.graphMode === "timeline" ? (
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm text-zinc-200">
           <input
             type="checkbox"
             checked={props.includeSequenceEdges}
@@ -148,12 +150,12 @@ function GraphControls(props: GraphControlsProps) {
       ) : null}
 
       {props.graphMode === "character" ? (
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm text-zinc-200">
           <span>Edge style:</span>
           <select
             value={props.characterEdgeStyle}
             onChange={(event) => props.onCharacterEdgeStyleChange(event.target.value as CharacterEdgeStyle)}
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+            className="rounded-lg border border-white/15 bg-zinc-950/80 px-2 py-1 text-sm"
           >
             <option value="cooccurrence">Co-occurrence</option>
             <option value="action_labeled">Action-labeled</option>
@@ -161,7 +163,7 @@ function GraphControls(props: GraphControlsProps) {
         </label>
       ) : null}
 
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex items-center gap-2 text-sm text-zinc-200">
         <input
           type="checkbox"
           checked={props.usePronounResolver}
@@ -173,16 +175,6 @@ function GraphControls(props: GraphControlsProps) {
         This affects extraction payloads. Debug preview is separate and does not change request data.
       </p>
 
-      {props.allowResolverDebug ? (
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={props.showResolverDebug}
-            onChange={(event) => props.onShowResolverDebugChange(event.target.checked)}
-          />
-          Debug: Pronoun resolver preview
-        </label>
-      ) : null}
     </div>
   );
 }
@@ -195,6 +187,7 @@ type GraphDiagnosticsProps = {
   meta?: GraphTransformMeta;
   severityFilter: "all" | "error" | "warning";
   categoryFilter: "all" | GraphDiagnostic["category"];
+  eventIdToIndex: Map<string, number>;
   onSeverityFilterChange: (value: "all" | "error" | "warning") => void;
   onCategoryFilterChange: (value: "all" | GraphDiagnostic["category"]) => void;
 };
@@ -210,134 +203,282 @@ function GraphDiagnostics(props: GraphDiagnosticsProps) {
   });
 
   const categories = Array.from(new Set(diagnostics.map((diagnostic) => diagnostic.category))).sort();
+  const errorsCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
+  const warningsCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
+
+  const toEventLabel = (eventId: string) => {
+    const index = props.eventIdToIndex.get(eventId);
+    return index ? `#${index}` : "n/a";
+  };
 
   return (
-    <div className="rounded border border-zinc-800 bg-zinc-950 p-3 text-sm">
-      <div className="mb-3 grid gap-2">
-        <label className="text-xs text-zinc-400">
-          Severity
-          <select
-            value={props.severityFilter}
-            onChange={(event) =>
-              props.onSeverityFilterChange(event.target.value as "all" | "error" | "warning")
-            }
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm"
-          >
-            <option value="all">All</option>
-            <option value="error">Error</option>
-            <option value="warning">Warning</option>
-          </select>
-        </label>
-        <label className="text-xs text-zinc-400">
-          Category
-          <select
-            value={props.categoryFilter}
-            onChange={(event) =>
-              props.onCategoryFilterChange(
-                event.target.value as "all" | GraphDiagnostic["category"],
-              )
-            }
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm"
-          >
-            <option value="all">All categories</option>
-            {categories.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-        </label>
+    <div className="space-y-3 text-sm">
+      <div className="rounded-2xl border border-white/10 bg-[#0d1425]/90 p-3">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-indigo-500/60 bg-indigo-500/15 px-3 py-1 text-xs font-medium text-indigo-200">
+            All {diagnostics.length}
+          </span>
+          <span className="rounded-full border border-red-500/60 bg-red-500/15 px-3 py-1 text-xs font-medium text-red-200">
+            Errors {errorsCount}
+          </span>
+          <span className="rounded-full border border-amber-500/60 bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-200">
+            Warnings {warningsCount}
+          </span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-xs text-zinc-400">
+            Severity
+            <select
+              value={props.severityFilter}
+              onChange={(event) =>
+                props.onSeverityFilterChange(event.target.value as "all" | "error" | "warning")
+              }
+              className="mt-1 w-full rounded-lg border border-white/15 bg-zinc-900/90 px-2 py-1 text-sm"
+            >
+              <option value="all">All</option>
+              <option value="error">Error</option>
+              <option value="warning">Warning</option>
+            </select>
+          </label>
+          <label className="text-xs text-zinc-400">
+            Category
+            <select
+              value={props.categoryFilter}
+              onChange={(event) =>
+                props.onCategoryFilterChange(
+                  event.target.value as "all" | GraphDiagnostic["category"],
+                )
+              }
+              className="mt-1 w-full rounded-lg border border-white/15 bg-zinc-900/90 px-2 py-1 text-sm"
+            >
+              <option value="all">All categories</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
-      <p>
-        requestId: <span className="text-zinc-300">{props.requestId ?? "n/a"}</span>
-      </p>
-      <p>
-        events: <span className="text-zinc-300">{props.eventsCount}</span>
-      </p>
-      <p>
-        nodes: <span className="text-zinc-300">{props.nodesCount}</span>
-      </p>
-      <p>
-        edges: <span className="text-zinc-300">{props.edgesCount}</span>
-      </p>
-      <p>
-        mode: <span className="text-zinc-300">{props.meta?.mode ?? "n/a"}</span>
-      </p>
-      <p>
-        style: <span className="text-zinc-300">{props.meta?.characterEdgeStyle ?? "n/a"}</span>
-      </p>
-      <p>
-        relationEdges: <span className="text-zinc-300">{props.meta?.relationEdgeCount ?? 0}</span>
-      </p>
-      <p>
-        fallbackOrder: <span className="text-zinc-300">{props.meta?.fallbackOrderCount ?? 0}</span>
-      </p>
-      <p>
-        droppedEvents: <span className="text-zinc-300">{props.meta?.droppedEventCount ?? 0}</span>
-      </p>
-      <p>
-        densityStatus: <span className="text-zinc-300">{props.meta?.densityStatus ?? "ok"}</span>
-      </p>
-      <p>
-        diagnosticsSchemaVersion:{" "}
-        <span className="text-zinc-300">{props.meta?.diagnosticsSchemaVersion ?? 1}</span>
-      </p>
-      <p>
-        diagnostics: <span className="text-zinc-300">{props.meta?.diagnosticsSummary.total ?? 0}</span> (
-        <span className="text-red-300">{props.meta?.diagnosticsSummary.errors ?? 0} errors</span>,{" "}
-        <span className="text-amber-300">{props.meta?.diagnosticsSummary.warnings ?? 0} warnings</span>)
-      </p>
-      <p>
-        runDurationMs:{" "}
-        <span className="text-zinc-300">{props.meta?.diagnosticsObservability.runDurationMs ?? 0}</span>
-      </p>
-      <p>
-        degradedModeCount:{" "}
-        <span className="text-zinc-300">
-          {props.meta?.diagnosticsObservability.degradedModeCount ?? 0}
-        </span>
-      </p>
+      <div className="rounded-2xl border border-white/10 bg-[#0d1425]/90 p-3">
+        <p className="mb-2 text-xs uppercase tracking-wide text-zinc-400">Summary</p>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <p className="rounded-lg border border-white/10 bg-black/20 p-2">
+            Events <span className="block text-base text-zinc-100">{props.eventsCount}</span>
+          </p>
+          <p className="rounded-lg border border-white/10 bg-black/20 p-2">
+            Edges <span className="block text-base text-zinc-100">{props.edgesCount}</span>
+          </p>
+          <p className="rounded-lg border border-white/10 bg-black/20 p-2">
+            Issues{" "}
+            <span className="block text-base text-zinc-100">{props.meta?.diagnosticsSummary.total ?? 0}</span>
+          </p>
+          <p className="rounded-lg border border-white/10 bg-black/20 p-2">
+            Request <span className="block text-base text-zinc-100">{props.requestId ? "Live" : "Idle"}</span>
+          </p>
+        </div>
+      </div>
 
-      <div className="mt-3 max-h-[320px] space-y-2 overflow-auto border-t border-zinc-800 pt-2">
-        {props.meta?.diagnosticsObservability.perRuleHitCount ? (
-          <div className="rounded border border-zinc-800 bg-zinc-900/60 p-2 text-xs text-zinc-400">
-            <p className="mb-1 font-medium text-zinc-300">Rule hits</p>
-            {Object.entries(props.meta.diagnosticsObservability.perRuleHitCount).length === 0 ? (
-              <p>n/a</p>
-            ) : (
-              Object.entries(props.meta.diagnosticsObservability.perRuleHitCount)
-                .sort((left, right) => right[1] - left[1])
-                .slice(0, 8)
-                .map(([ruleId, count]) => (
-                  <p key={ruleId}>
-                    {ruleId}: <span className="text-zinc-200">{count}</span>
-                  </p>
-                ))
-            )}
-          </div>
-        ) : null}
-
+      <div className="max-h-[430px] space-y-2 overflow-auto rounded-2xl border border-white/10 bg-[#0d1425]/90 p-3">
+        <p className="text-xs uppercase tracking-wide text-zinc-400">Issues ({filteredDiagnostics.length})</p>
         {filteredDiagnostics.length === 0 ? (
           <p className="text-xs text-zinc-500">No diagnostics for current filters.</p>
         ) : (
-          filteredDiagnostics.slice(0, 40).map((diagnostic) => (
-            <article
-              key={diagnostic.id}
-              className={`rounded border p-2 text-xs ${
-                diagnostic.severity === "error"
-                  ? "border-red-800 bg-red-950/30"
-                  : "border-amber-800 bg-amber-950/20"
-              }`}
-            >
-              <p className="font-medium">
-                {diagnostic.severity.toUpperCase()} - {diagnostic.category}/{diagnostic.subtype}
-              </p>
-              <p className="mt-1 text-zinc-300">{diagnostic.message}</p>
-              <p className="mt-1 text-zinc-400">id: {diagnostic.id}</p>
-            </article>
-          ))
+          filteredDiagnostics.slice(0, 40).map((diagnostic) => {
+            const evidenceEventIds = diagnostic.evidence?.eventIds ?? [];
+            const evidenceLabel = evidenceEventIds
+              .slice(0, 2)
+              .map((eventId) => toEventLabel(eventId))
+              .join(" + ");
+            return (
+              <article
+                key={diagnostic.id}
+                className={`rounded-xl border p-3 text-xs ${
+                  diagnostic.severity === "error"
+                    ? "border-red-500/60 bg-red-500/10"
+                    : "border-amber-500/60 bg-amber-500/10"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p
+                    className={`font-semibold ${
+                      diagnostic.severity === "error" ? "text-red-200" : "text-amber-200"
+                    }`}
+                  >
+                    {diagnostic.category.replace("_", " ")}
+                  </p>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${
+                      diagnostic.severity === "error"
+                        ? "border-red-400/70 text-red-200"
+                        : "border-amber-400/70 text-amber-200"
+                    }`}
+                  >
+                    {diagnostic.severity}
+                  </span>
+                </div>
+                <p className="mt-2 text-zinc-200">{diagnostic.message}</p>
+                <p className="mt-2 text-zinc-400">
+                  {evidenceLabel ? `Events ${evidenceLabel}` : `Subtype ${diagnostic.subtype}`}
+                </p>
+              </article>
+            );
+          })
         )}
+      </div>
+
+      <details className="rounded-2xl border border-white/10 bg-[#0d1425]/90 p-3">
+        <summary className="cursor-pointer text-xs uppercase tracking-wide text-zinc-300">
+          Diagnostics observability
+        </summary>
+        <div className="mt-2 space-y-1 text-xs text-zinc-300">
+          <p>
+            requestId: <span className="text-zinc-100">{props.requestId ?? "n/a"}</span>
+          </p>
+          <p>
+            nodes: <span className="text-zinc-100">{props.nodesCount}</span>
+          </p>
+          <p>
+            mode: <span className="text-zinc-100">{props.meta?.mode ?? "n/a"}</span>
+          </p>
+          <p>
+            relationEdges: <span className="text-zinc-100">{props.meta?.relationEdgeCount ?? 0}</span>
+          </p>
+          <p>
+            fallbackOrder: <span className="text-zinc-100">{props.meta?.fallbackOrderCount ?? 0}</span>
+          </p>
+          <p>
+            droppedEvents: <span className="text-zinc-100">{props.meta?.droppedEventCount ?? 0}</span>
+          </p>
+          <p>
+            densityStatus: <span className="text-zinc-100">{props.meta?.densityStatus ?? "ok"}</span>
+          </p>
+          <p>
+            runDurationMs:{" "}
+            <span className="text-zinc-100">
+              {props.meta?.diagnosticsObservability.runDurationMs ?? 0}
+            </span>
+          </p>
+          <p>
+            degradedModeCount:{" "}
+            <span className="text-zinc-100">
+              {props.meta?.diagnosticsObservability.degradedModeCount ?? 0}
+            </span>
+          </p>
+        </div>
+        <div className="mt-2 rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-zinc-400">
+          <p className="mb-1 font-medium text-zinc-200">Rule hits</p>
+          {Object.entries(props.meta?.diagnosticsObservability.perRuleHitCount ?? {}).length === 0 ? (
+            <p>n/a</p>
+          ) : (
+            Object.entries(props.meta?.diagnosticsObservability.perRuleHitCount ?? {})
+              .sort((left, right) => right[1] - left[1])
+              .slice(0, 8)
+              .map(([ruleId, count]) => (
+                <p key={ruleId}>
+                  {ruleId}: <span className="text-zinc-200">{count}</span>
+                </p>
+              ))
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+type SurfaceCardProps = {
+  index: number;
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+};
+
+function SurfaceCard(props: SurfaceCardProps) {
+  return (
+    <section className="rounded-2xl border border-white/10 bg-[#0d1425]/90 p-4 shadow-[0_16px_30px_-20px_rgba(59,130,246,0.5)]">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-indigo-400/60 bg-indigo-500/20 text-xs font-semibold text-indigo-100">
+            {props.index}
+          </span>
+          <div>
+            <h2 className="text-base font-semibold text-zinc-100">{props.title}</h2>
+            <p className="text-xs text-zinc-400">{props.subtitle}</p>
+          </div>
+        </div>
+        {props.onToggleCollapsed ? (
+          <button
+            type="button"
+            onClick={props.onToggleCollapsed}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-zinc-200"
+            aria-label={`${props.collapsed ? "Expand" : "Collapse"} ${props.title} section`}
+          >
+            <svg
+              viewBox="0 0 20 20"
+              aria-hidden="true"
+              className={`h-4 w-4 transition-transform ${props.collapsed ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            >
+              <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        ) : null}
+      </div>
+      {props.collapsed ? null : props.children}
+    </section>
+  );
+}
+
+type TopMetricProps = {
+  label: string;
+  value: string;
+  tone?: "neutral" | "warning" | "error";
+};
+
+function TopMetric(props: TopMetricProps) {
+  const toneClass =
+    props.tone === "error"
+      ? "border-red-500/40 bg-red-500/10 text-red-100"
+      : props.tone === "warning"
+        ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+        : "border-white/15 bg-white/5 text-zinc-100";
+  return (
+    <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
+      <p className="text-[10px] uppercase tracking-wide text-zinc-400">{props.label}</p>
+      <p className="text-sm font-semibold">{props.value}</p>
+    </div>
+  );
+}
+
+function DiagnosticsMetaCard(props: {
+  eventsCount: number;
+  edgesCount: number;
+  issuesCount: number;
+  runDurationMs: number;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+        <p className="text-[10px] uppercase tracking-wide text-zinc-400">Events</p>
+        <p className="text-sm font-semibold text-zinc-100">{props.eventsCount}</p>
+      </div>
+      <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+        <p className="text-[10px] uppercase tracking-wide text-zinc-400">Edges</p>
+        <p className="text-sm font-semibold text-zinc-100">{props.edgesCount}</p>
+      </div>
+      <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+        <p className="text-[10px] uppercase tracking-wide text-zinc-400">Issues</p>
+        <p className="text-sm font-semibold text-zinc-100">{props.issuesCount}</p>
+      </div>
+      <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+        <p className="text-[10px] uppercase tracking-wide text-zinc-400">Req Time</p>
+        <p className="text-sm font-semibold text-zinc-100">{props.runDurationMs}ms</p>
       </div>
     </div>
   );
@@ -351,7 +492,7 @@ export default function Home() {
   const [error, setError] = useState<UiError | null>(null);
   const [includeSequenceEdges, setIncludeSequenceEdges] = useState(false);
   const [graphMode, setGraphMode] = useState<GraphViewMode>("timeline");
-  const [characterEdgeStyle, setCharacterEdgeStyle] = useState<CharacterEdgeStyle>("cooccurrence");
+  const [characterEdgeStyle, setCharacterEdgeStyle] = useState<CharacterEdgeStyle>("action_labeled");
   const [usePronounResolver, setUsePronounResolver] = useState(true);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [activeStoryFingerprint, setActiveStoryFingerprint] = useState<string | null>(null);
@@ -362,12 +503,25 @@ export default function Home() {
   const [resolvingPreview, setResolvingPreview] = useState(false);
   const [severityFilter, setSeverityFilter] = useState<"all" | "error" | "warning">("all");
   const [categoryFilter, setCategoryFilter] = useState<"all" | GraphDiagnostic["category"]>("all");
+  const [leftPanelWidth, setLeftPanelWidth] = useState(panelWidths.left.default);
+  const [rightPanelWidth, setRightPanelWidth] = useState(panelWidths.right.default);
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const [storySectionCollapsed, setStorySectionCollapsed] = useState(false);
+  const [settingsSectionCollapsed, setSettingsSectionCollapsed] = useState(false);
+  const [advancedSectionCollapsed, setAdvancedSectionCollapsed] = useState(false);
+  const [resizeState, setResizeState] = useState<{
+    side: "left" | "right";
+    startX: number;
+    startWidth: number;
+  } | null>(null);
   const allowResolverDebug = process.env.NODE_ENV !== "production";
   const diagnosticsEnabled = process.env.NEXT_PUBLIC_STORY_DIAGNOSTICS_PHASE1_ENABLED !== "false";
 
   const timerRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const resolverModuleRef = useRef<Promise<typeof import("@/lib/pronoun-resolver")> | null>(null);
+  const previousHasCompletedAnalysisRef = useRef(false);
 
   const graph = useMemo(() => {
     const transformed = transformEventsToGraph(events, {
@@ -567,193 +721,414 @@ export default function Home() {
     }
   };
 
+  const issuesTotal = graph.meta?.diagnosticsSummary.total ?? 0;
+  const issuesErrors = graph.meta?.diagnosticsSummary.errors ?? 0;
+  const issuesWarnings = graph.meta?.diagnosticsSummary.warnings ?? 0;
+  const eventIdToIndex = useMemo(
+    () => new Map(events.map((event, index) => [event.eventId, index + 1])),
+    [events],
+  );
+  const hasCompletedAnalysis = requestId !== undefined || error !== null || events.length > 0;
+
+  const clampWidth = (side: "left" | "right", width: number) => {
+    const limits = panelWidths[side];
+    return Math.min(Math.max(width, limits.min), limits.max);
+  };
+
+  useEffect(() => {
+    if (!resizeState) {
+      return;
+    }
+
+    const onResizeMouseMove = (event: MouseEvent) => {
+      const deltaX = event.clientX - resizeState.startX;
+      if (resizeState.side === "left") {
+        const proposedWidth = resizeState.startWidth + deltaX;
+        if (proposedWidth <= panelWidths.left.collapse) {
+          setLeftPanelCollapsed(true);
+          return;
+        }
+        setLeftPanelCollapsed(false);
+        setLeftPanelWidth(clampWidth("left", proposedWidth));
+        return;
+      }
+
+      const proposedWidth = resizeState.startWidth - deltaX;
+      if (proposedWidth <= panelWidths.right.collapse) {
+        setRightPanelCollapsed(true);
+        return;
+      }
+      setRightPanelCollapsed(false);
+      setRightPanelWidth(clampWidth("right", proposedWidth));
+    };
+
+    const stopResize = () => {
+      setResizeState(null);
+    };
+
+    window.addEventListener("mousemove", onResizeMouseMove);
+    window.addEventListener("mouseup", stopResize);
+    return () => {
+      window.removeEventListener("mousemove", onResizeMouseMove);
+      window.removeEventListener("mouseup", stopResize);
+    };
+  }, [resizeState]);
+
+  const startResize = (side: "left" | "right") => (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    const startWidth = side === "left" ? leftPanelWidth : rightPanelWidth;
+    setResizeState({
+      side,
+      startX: event.clientX,
+      startWidth,
+    });
+  };
+
+  const isResizing = resizeState !== null;
+  const handleExpandLeft = () => {
+    setLeftPanelCollapsed(false);
+    setLeftPanelWidth(panelWidths.left.default);
+  };
+  const handleExpandRight = () => {
+    if (!hasCompletedAnalysis) {
+      return;
+    }
+    setRightPanelCollapsed(false);
+    setRightPanelWidth(panelWidths.right.default);
+  };
+
+  useEffect(() => {
+    if (!hasCompletedAnalysis) {
+      setRightPanelCollapsed(true);
+    }
+  }, [hasCompletedAnalysis]);
+
+  useEffect(() => {
+    if (!previousHasCompletedAnalysisRef.current && hasCompletedAnalysis) {
+      setRightPanelCollapsed(false);
+      setRightPanelWidth(panelWidths.right.default);
+    }
+    previousHasCompletedAnalysisRef.current = hasCompletedAnalysis;
+  }, [hasCompletedAnalysis]);
+
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto flex w-full max-w-[1700px] flex-col gap-4 p-4 lg:h-screen lg:flex-row">
-        <section className="w-full rounded-lg border border-zinc-800 bg-zinc-900 p-4 lg:w-[420px] lg:overflow-auto">
-          <h1 className="text-xl font-semibold">Narrative Graph Tester</h1>
-          <p className="mt-2 text-sm text-zinc-400">
-            Submit story text, extract events via the LLM layer, and render an event graph.
-          </p>
-
-          <form className="mt-4 space-y-3" onSubmit={onSubmit}>
-            <label className="block text-sm font-medium" htmlFor="story-input">
-              Story
-            </label>
-            <textarea
-              id="story-input"
-              className="h-56 w-full rounded border border-zinc-700 bg-zinc-950 p-3 font-mono text-sm"
-              value={story}
-              onChange={(event) => setStory(event.target.value)}
-              maxLength={appLimits.maxStoryChars}
-            />
-
-            <div className="flex items-center justify-between text-xs text-zinc-400">
-              <span>{story.trim().length.toLocaleString()} chars</span>
-              {loading ? <span>Elapsed: {formatElapsedMs(elapsedMs)}</span> : null}
+    <main className={`ui-shell min-h-screen text-zinc-100 ${isResizing ? "select-none lg:cursor-col-resize" : ""}`}>
+      <div className="w-full space-y-3 p-3 lg:h-screen lg:max-h-screen lg:overflow-hidden">
+        <header className="-mx-3 -mt-3 border-b border-white/10 bg-[#0d1425]/95 px-4 py-2 shadow-[0_16px_40px_-30px_rgba(59,130,246,0.7)] lg:px-6 lg:py-2.5">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h1 className="text-xl font-semibold">Narrative Consistency Checker</h1>
+              <p className="text-xs text-zinc-400">Find contradictions and issues in your story</p>
             </div>
-
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={loading}
-                className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {loading ? "Extracting..." : "Extract Graph"}
-              </button>
-              <button
-                type="button"
-                disabled={!loading}
-                onClick={cancelCurrentRequest}
-                className="rounded border border-zinc-700 px-4 py-2 text-sm disabled:opacity-50"
-              >
-                Cancel
-              </button>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <TopMetric label="Last run" value={loading ? formatElapsedMs(elapsedMs) : "Ready"} />
+              <TopMetric label="Events" value={String(events.length)} />
+              <TopMetric label="Issues" value={String(issuesTotal)} tone={issuesErrors > 0 ? "error" : "neutral"} />
+              <TopMetric label="Warnings" value={String(issuesWarnings)} tone={issuesWarnings > 0 ? "warning" : "neutral"} />
             </div>
+          </div>
+        </header>
 
-            <GraphControls
-              graphMode={graphMode}
-              characterEdgeStyle={characterEdgeStyle}
-              includeSequenceEdges={includeSequenceEdges}
-              usePronounResolver={usePronounResolver}
-              showResolverDebug={showResolverDebug}
-              allowResolverDebug={allowResolverDebug}
-              onGraphModeChange={setGraphMode}
-              onCharacterEdgeStyleChange={setCharacterEdgeStyle}
-              onIncludeSequenceEdgesChange={setIncludeSequenceEdges}
-              onUsePronounResolverChange={setUsePronounResolver}
-              onShowResolverDebugChange={setShowResolverDebug}
-            />
-          </form>
-
-          {allowResolverDebug && showResolverDebug ? (
-            <div className="mt-4 rounded border border-zinc-800 bg-zinc-950 p-3 text-sm">
-              <p className="text-xs uppercase tracking-wide text-zinc-400">Preview only</p>
-              <p className="mt-1 text-zinc-300">
-                This preview does not change the extract request payload.
-              </p>
-              <div className="mt-3 flex items-center gap-2">
+        <div className="grid gap-3 lg:h-[calc(100%-96px)] lg:grid-cols-1 lg:overflow-hidden">
+          <div className="flex h-full gap-2 overflow-hidden">
+            {leftPanelCollapsed ? (
+              <div
+                className="hidden h-full items-center justify-center rounded-2xl border border-white/10 bg-[#0d1425]/90 lg:flex"
+                style={{ width: panelWidths.rail }}
+              >
                 <button
                   type="button"
-                  onClick={onGeneratePreview}
-                  disabled={resolvingPreview}
-                  className="rounded border border-zinc-700 px-3 py-1 text-xs disabled:opacity-50"
+                  onClick={handleExpandLeft}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-zinc-200"
+                  aria-label="Expand left section"
                 >
-                  {resolvingPreview ? "Generating preview..." : "Generate Preview"}
+                  <svg
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  >
+                    <path d="M8 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </button>
-                <span className="text-xs text-zinc-500">
-                  max {appLimits.pronounPreviewMaxChars.toLocaleString()} chars
-                </span>
               </div>
+            ) : (
+              <section
+                className="space-y-4 overflow-auto pr-1"
+                style={{ width: leftPanelWidth }}
+              >
+                <SurfaceCard
+                  index={1}
+                  title="Story"
+                  subtitle="Paste your story below. We'll extract events and check for inconsistencies."
+                  collapsed={storySectionCollapsed}
+                  onToggleCollapsed={() => setStorySectionCollapsed((current) => !current)}
+                >
+                  <form className="space-y-3" onSubmit={onSubmit}>
+                    <textarea
+                      id="story-input"
+                      className="h-64 w-full rounded-xl border border-white/10 bg-black/25 p-3 font-mono text-sm"
+                      value={story}
+                      onChange={(event) => setStory(event.target.value)}
+                      maxLength={appLimits.maxStoryChars}
+                    />
+                    <div className="flex items-center justify-between text-xs text-zinc-400">
+                      <span>{story.trim().length.toLocaleString()} characters</span>
+                      {loading ? <span>{formatElapsedMs(elapsedMs)}</span> : null}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-900/50 disabled:opacity-50"
+                      >
+                        {loading ? "Extracting..." : "Extract Graph"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!loading}
+                        onClick={cancelCurrentRequest}
+                        className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                </SurfaceCard>
 
-              {resolverPreviewMessage ? (
-                <p className="mt-2 text-xs text-amber-300">{resolverPreviewMessage}</p>
-              ) : null}
+                <SurfaceCard
+                  index={2}
+                  title="Settings"
+                  subtitle="Adjust how the graph is built."
+                  collapsed={settingsSectionCollapsed}
+                  onToggleCollapsed={() => setSettingsSectionCollapsed((current) => !current)}
+                >
+                  <GraphControls
+                    graphMode={graphMode}
+                    characterEdgeStyle={characterEdgeStyle}
+                    includeSequenceEdges={includeSequenceEdges}
+                    usePronounResolver={usePronounResolver}
+                    onGraphModeChange={setGraphMode}
+                    onCharacterEdgeStyleChange={setCharacterEdgeStyle}
+                    onIncludeSequenceEdgesChange={setIncludeSequenceEdges}
+                    onUsePronounResolverChange={setUsePronounResolver}
+                  />
+                </SurfaceCard>
 
-              <div className="mt-3 grid gap-2">
-                <div>
-                  <p className="text-xs text-zinc-500">Original story</p>
-                  <pre className="mt-1 max-h-32 overflow-auto rounded bg-black p-2 text-xs text-zinc-300">
-                    {story.trim() || "n/a"}
-                  </pre>
-                </div>
+                <SurfaceCard
+                  index={3}
+                  title="Advanced"
+                  subtitle="Debugging and inspection"
+                  collapsed={advancedSectionCollapsed}
+                  onToggleCollapsed={() => setAdvancedSectionCollapsed((current) => !current)}
+                >
+                  <DiagnosticsMetaCard
+                    eventsCount={events.length}
+                    edgesCount={graph.edges.length}
+                    issuesCount={issuesTotal}
+                    runDurationMs={graph.meta?.diagnosticsObservability.runDurationMs ?? 0}
+                  />
+                  {allowResolverDebug ? (
+                    <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-sm">
+                      <label className="flex items-center gap-2 text-sm text-zinc-200">
+                        <input
+                          type="checkbox"
+                          checked={showResolverDebug}
+                          onChange={(event) => setShowResolverDebug(event.target.checked)}
+                        />
+                        Debug: Pronoun resolver preview
+                      </label>
 
-                <div>
-                  <p className="text-xs text-zinc-500">Resolved preview story</p>
-                  <pre className="mt-1 max-h-32 overflow-auto rounded bg-black p-2 text-xs text-zinc-300">
-                    {resolvedPreview ?? "Run Generate Preview"}
-                  </pre>
-                </div>
+                      {showResolverDebug ? (
+                        <>
+                          <p className="mt-3 text-xs uppercase tracking-wide text-zinc-400">Preview only</p>
+                          <p className="mt-1 text-zinc-300">
+                            This preview does not change the extract request payload.
+                          </p>
+                          <div className="mt-3 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={onGeneratePreview}
+                              disabled={resolvingPreview}
+                              className="rounded-lg border border-white/15 px-3 py-1 text-xs disabled:opacity-50"
+                            >
+                              {resolvingPreview ? "Generating preview..." : "Generate Preview"}
+                            </button>
+                            <span className="text-xs text-zinc-500">
+                              max {appLimits.pronounPreviewMaxChars.toLocaleString()} chars
+                            </span>
+                          </div>
 
-                <div className="rounded border border-zinc-800 bg-zinc-900 p-2 text-xs">
-                  <p>pronounsFound: {resolverPreviewStats?.pronounsFound ?? 0}</p>
-                  <p>pronounsResolved: {resolverPreviewStats?.pronounsResolved ?? 0}</p>
-                  <p>pronounsSkipped: {resolverPreviewStats?.pronounsSkipped ?? 0}</p>
-                  <p>
-                    skipReason:{" "}
-                    {resolverPreviewStats
-                      ? (resolverPreviewStats.skipReason ?? "null")
-                      : "n/a"}
-                  </p>
-                </div>
+                          {resolverPreviewMessage ? (
+                            <p className="mt-2 text-xs text-amber-300">{resolverPreviewMessage}</p>
+                          ) : null}
+
+                          <div className="mt-3 grid gap-2">
+                            <div>
+                              <p className="text-xs text-zinc-500">Original story</p>
+                              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-black p-2 text-xs text-zinc-300">
+                                {story.trim() || "n/a"}
+                              </pre>
+                            </div>
+                            <div>
+                              <p className="text-xs text-zinc-500">Resolved preview story</p>
+                              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-black p-2 text-xs text-zinc-300">
+                                {resolvedPreview ?? "Run Generate Preview"}
+                              </pre>
+                            </div>
+                            <div className="rounded border border-white/10 bg-zinc-900/80 p-2 text-xs">
+                              <p>pronounsFound: {resolverPreviewStats?.pronounsFound ?? 0}</p>
+                              <p>pronounsResolved: {resolverPreviewStats?.pronounsResolved ?? 0}</p>
+                              <p>pronounsSkipped: {resolverPreviewStats?.pronounsSkipped ?? 0}</p>
+                              <p>
+                                skipReason:{" "}
+                                {resolverPreviewStats ? (resolverPreviewStats.skipReason ?? "null") : "n/a"}
+                              </p>
+                            </div>
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {error ? (
+                    <div className="mt-3 rounded-xl border border-red-500/50 bg-red-500/10 p-3 text-sm">
+                      <p className="font-medium text-red-200">Error ({error.code})</p>
+                      <p className="mt-1 text-zinc-200">{error.message}</p>
+                      {error.requestId ? <p className="mt-1 text-xs">requestId: {error.requestId}</p> : null}
+                    </div>
+                  ) : null}
+                  {showLargeGraphWarning ? (
+                    <p className="mt-3 text-sm text-amber-300">
+                      {graphMode === "timeline"
+                        ? `Large graph warning: ${events.length} events may impact rendering performance.`
+                        : `Character graph warning: relation edges are above ${graph.meta?.thresholds.warn ?? appLimits.characterGraphWarnEdges}.`}
+                    </p>
+                  ) : null}
+                  {blockGraphRender ? (
+                    <p className="mt-2 text-sm text-amber-200">
+                      {graphMode === "timeline"
+                        ? `Graph rendering disabled above ${appLimits.largeGraphBlockEvents} events. Reduce input or improve extraction granularity.`
+                        : `Character graph rendering disabled above ${graph.meta?.thresholds.block ?? appLimits.characterGraphBlockEdges} relation edges.`}
+                    </p>
+                  ) : null}
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-sm text-zinc-300">Raw events JSON</summary>
+                    <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-black/60 p-3 text-xs text-zinc-300">
+                      {JSON.stringify(events, null, 2)}
+                    </pre>
+                  </details>
+                </SurfaceCard>
+              </section>
+            )}
+
+            {!leftPanelCollapsed ? (
+              <button
+                type="button"
+                onMouseDown={startResize("left")}
+                className="hidden w-2 cursor-col-resize rounded-full border border-white/10 bg-white/5 lg:block"
+                aria-label="Resize left section"
+              />
+            ) : null}
+
+            <section className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-[#0d1425]/90 p-3 lg:overflow-hidden">
+            <div className="mb-3 flex items-center justify-between gap-3 px-2">
+              <div>
+                <h2 className="text-lg font-semibold">Event Graph</h2>
+                <p className="text-xs text-zinc-400">
+                  Timeline view of events. Red indicates inconsistencies.
+                </p>
+              </div>
+              <div className="rounded-lg border border-white/15 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+                {graphMode === "timeline" ? "Timeline" : "Character"}
               </div>
             </div>
-          ) : null}
-
-          {error ? (
-            <div className="mt-4 rounded border border-red-700 bg-red-950/40 p-3 text-sm">
-              <p className="font-medium">Error ({error.code})</p>
-              <p className="mt-1 text-zinc-300">{error.message}</p>
-              {error.requestId ? <p className="mt-1 text-xs">requestId: {error.requestId}</p> : null}
+            <div className="h-[540px] rounded-xl border border-white/10 bg-black/25 lg:h-[calc(100%-52px)]">
+              {blockGraphRender ? (
+                <div className="flex h-full items-center justify-center text-zinc-400">
+                  Graph hidden due to event volume.
+                </div>
+              ) : (
+                <ReactFlow
+                  fitView
+                  onlyRenderVisibleElements
+                  nodes={nodesToRender}
+                  edges={edgesToRender}
+                  nodesDraggable={false}
+                  nodesConnectable={false}
+                  elementsSelectable
+                  minZoom={0.2}
+                  maxZoom={1.5}
+                >
+                  <Controls />
+                  <Background />
+                </ReactFlow>
+              )}
             </div>
-          ) : null}
+            </section>
 
-          {showLargeGraphWarning ? (
-            <p className="mt-3 text-sm text-amber-400">
-              {graphMode === "timeline"
-                ? `Large graph warning: ${events.length} events may impact rendering performance.`
-                : `Character graph warning: relation edges are above ${graph.meta?.thresholds.warn ?? appLimits.characterGraphWarnEdges}.`}
-            </p>
-          ) : null}
-          {blockGraphRender ? (
-            <p className="mt-2 text-sm text-amber-300">
-              {graphMode === "timeline"
-                ? `Graph rendering disabled above ${appLimits.largeGraphBlockEvents} events. Reduce input or improve extraction granularity.`
-                : `Character graph rendering disabled above ${graph.meta?.thresholds.block ?? appLimits.characterGraphBlockEdges} relation edges.`}
-            </p>
-          ) : null}
+            {!rightPanelCollapsed && hasCompletedAnalysis ? (
+              <button
+                type="button"
+                onMouseDown={startResize("right")}
+                className="hidden w-2 cursor-col-resize rounded-full border border-white/10 bg-white/5 lg:block"
+                aria-label="Resize right section"
+              />
+            ) : null}
 
-          <details className="mt-4">
-            <summary className="cursor-pointer text-sm">Raw events JSON</summary>
-            <pre className="mt-2 max-h-64 overflow-auto rounded bg-black p-3 text-xs text-zinc-300">
-              {JSON.stringify(events, null, 2)}
-            </pre>
-          </details>
-        </section>
-
-        <section className="min-h-[500px] flex-1 rounded-lg border border-zinc-800 bg-zinc-900">
-          {blockGraphRender ? (
-            <div className="flex h-full items-center justify-center text-zinc-400">
-              Graph hidden due to event volume.
-            </div>
-          ) : (
-            <ReactFlow
-              fitView
-              onlyRenderVisibleElements
-              nodes={nodesToRender}
-              edges={edgesToRender}
-              nodesDraggable={false}
-              nodesConnectable={false}
-              elementsSelectable
-              minZoom={0.2}
-              maxZoom={1.5}
-            >
-              <MiniMap />
-              <Controls />
-              <Background />
-            </ReactFlow>
-          )}
-        </section>
-
-        <aside className="w-full rounded-lg border border-zinc-800 bg-zinc-900 p-4 lg:w-[420px] lg:overflow-auto">
-          <h2 className="text-lg font-semibold">Diagnostics</h2>
-          <p className="mt-1 text-xs text-zinc-400">
-            Structural story checks linked to graph nodes and edges.
-          </p>
-          <div className="mt-3">
-            <GraphDiagnostics
-              requestId={requestId}
-              eventsCount={events.length}
-              nodesCount={graph.nodes.length}
-              edgesCount={graph.edges.length}
-              meta={graph.meta}
-              severityFilter={severityFilter}
-              categoryFilter={categoryFilter}
-              onSeverityFilterChange={setSeverityFilter}
-              onCategoryFilterChange={setCategoryFilter}
-            />
+            {rightPanelCollapsed ? (
+              <div
+                className="hidden h-full items-center justify-center rounded-2xl border border-white/10 bg-[#0d1425]/90 lg:flex"
+                style={{ width: panelWidths.rail }}
+              >
+                <button
+                  type="button"
+                  onClick={handleExpandRight}
+                  disabled={!hasCompletedAnalysis}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-zinc-200 disabled:opacity-50"
+                  aria-label="Expand right section"
+                >
+                  <svg
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  >
+                    <path d="M12 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <aside
+                className="space-y-3 rounded-2xl border border-white/10 bg-[#0d1425]/90 p-4 overflow-auto"
+                style={{ width: rightPanelWidth }}
+              >
+                <div>
+                  <div>
+                    <h2 className="text-lg font-semibold">Issues</h2>
+                    <p className="text-xs text-zinc-400">Rule hits, metrics and observability</p>
+                  </div>
+                </div>
+                <GraphDiagnostics
+                  requestId={requestId}
+                  eventsCount={events.length}
+                  nodesCount={graph.nodes.length}
+                  edgesCount={graph.edges.length}
+                  meta={graph.meta}
+                  severityFilter={severityFilter}
+                  categoryFilter={categoryFilter}
+                  eventIdToIndex={eventIdToIndex}
+                  onSeverityFilterChange={setSeverityFilter}
+                  onCategoryFilterChange={setCategoryFilter}
+                />
+              </aside>
+            )}
           </div>
-        </aside>
+        </div>
       </div>
     </main>
   );

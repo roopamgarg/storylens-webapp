@@ -43,4 +43,10 @@ describe("resolveGraphRenderState", () => {
     });
     expect(blockedState.blockGraphRender).toBe(true);
   });
+
+  it("does not warn or block empty character metadata", () => {
+    const state = resolveGraphRenderState("character", 40, undefined);
+    expect(state.showLargeGraphWarning).toBe(false);
+    expect(state.blockGraphRender).toBe(false);
+  });
 });
