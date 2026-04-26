@@ -21,6 +21,7 @@ export const extractEventsRequestSchema = z
     metadata: z
       .object({
         storyId: z.string().trim().min(1).optional(),
+        usePronounResolver: z.boolean().optional(),
       })
       .optional(),
   })

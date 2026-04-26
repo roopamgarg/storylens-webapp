@@ -1,4 +1,7 @@
-import { DEFAULT_REQUEST_TIMEOUT_MS } from "@/lib/constants";
+import {
+  DEFAULT_PRONOUN_RESOLVER_TIMEOUT_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+} from "@/lib/constants";
 
 const DEFAULT_PRONOUN_RESOLVER_MAX_CHARS = 10_000;
 
@@ -45,6 +48,10 @@ const pronounResolverMaxChars = parsePositiveIntOrDefault(
   process.env.PRONOUN_RESOLVER_MAX_CHARS,
   DEFAULT_PRONOUN_RESOLVER_MAX_CHARS,
 );
+const pronounResolverTimeoutMs = parsePositiveIntOrDefault(
+  process.env.PRONOUN_RESOLVER_TIMEOUT_MS,
+  DEFAULT_PRONOUN_RESOLVER_TIMEOUT_MS,
+);
 
 const clientPreviewMaxChars = parsePositiveIntOrDefault(
   process.env.NEXT_PUBLIC_PRONOUN_RESOLVER_MAX_CHARS,
@@ -71,4 +78,5 @@ export const serverEnv = {
   ),
   enablePronounResolution: process.env.ENABLE_PRONOUN_RESOLUTION === "true",
   pronounResolverMaxChars,
+  pronounResolverTimeoutMs,
 };

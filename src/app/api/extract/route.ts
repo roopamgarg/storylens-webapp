@@ -41,6 +41,30 @@ function parseErrorPayload(raw: unknown): ApiErrorBody | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
+async function resolvePronounsWithTimeout(
+  story: string,
+  maxChars: number,
+  timeoutMs: number,
+) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error("pronoun_resolver_timeout"));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([
+      resolvePronouns(story, { maxChars }),
+      timeoutPromise,
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 export async function POST(request: Request): Promise<Response> {
   const requestId = randomUUID();
 
@@ -74,8 +98,20 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const requestData = requestParseResult.data;
+  const storyLengthChars = requestData.story.length;
+  const metadata = requestData.metadata;
+  const usePronounResolverFlag = metadata?.usePronounResolver === true;
+  const effectiveUseResolver =
+    serverEnv.enablePronounResolution && usePronounResolverFlag;
+  const configuredResolverTimeoutMs = serverEnv.pronounResolverTimeoutMs;
+  const effectiveResolverTimeoutMs = Math.max(
+    1,
+    Math.floor(Math.min(configuredResolverTimeoutMs, serverEnv.requestTimeoutMs * 0.5)),
+  );
+  let storyForUpstream = requestData.story;
+
   if (serverEnv.enablePronounResolution) {
-    const storyLengthChars = requestParseResult.data.story.length;
     const start = Date.now();
 
     if (storyLengthChars > serverEnv.pronounResolverMaxChars) {
@@ -83,6 +119,8 @@ export async function POST(request: Request): Promise<Response> {
         JSON.stringify({
           event: "pronoun_resolver",
           requestId,
+          mode: effectiveUseResolver ? "substitute" : "log_only",
+          effectiveUseResolver,
           pronounsFound: 0,
           pronounsResolved: 0,
           pronounsSkipped: 0,
@@ -93,30 +131,57 @@ export async function POST(request: Request): Promise<Response> {
       );
     } else {
       try {
-        const resolved = await resolvePronouns(requestParseResult.data.story, {
-          maxChars: serverEnv.pronounResolverMaxChars,
-        });
+        const resolved = effectiveUseResolver
+          ? await resolvePronounsWithTimeout(
+              requestData.story,
+              serverEnv.pronounResolverMaxChars,
+              effectiveResolverTimeoutMs,
+            )
+          : await resolvePronouns(requestData.story, {
+              maxChars: serverEnv.pronounResolverMaxChars,
+            });
+
+        if (effectiveUseResolver) {
+          const normalizedResolvedStory = resolved.resolvedStory.trim();
+          if (normalizedResolvedStory.length > 0 && resolved.stats.pronounsResolved > 0) {
+            storyForUpstream = normalizedResolvedStory;
+          }
+        }
 
         console.log(
           JSON.stringify({
             event: "pronoun_resolver",
             requestId,
+            mode: effectiveUseResolver ? "substitute" : "log_only",
+            effectiveUseResolver,
             pronounsFound: resolved.stats.pronounsFound,
             pronounsResolved: resolved.stats.pronounsResolved,
             pronounsSkipped: resolved.stats.pronounsSkipped,
             skipReason: resolved.skipReason ?? null,
             storyLengthChars,
             durationMs: Date.now() - start,
+            timeoutMs: effectiveUseResolver ? effectiveResolverTimeoutMs : null,
+            configuredTimeoutMs: effectiveUseResolver ? configuredResolverTimeoutMs : null,
           }),
         );
       } catch (error) {
+        const reasonCode =
+          error instanceof Error && error.message === "pronoun_resolver_timeout"
+            ? "timeout"
+            : "model_failure";
+
         console.log(
           JSON.stringify({
             event: "pronoun_resolver_error",
             requestId,
+            mode: effectiveUseResolver ? "substitute" : "log_only",
+            effectiveUseResolver,
+            reasonCode,
             storyLengthChars,
             durationMs: Date.now() - start,
             message: error instanceof Error ? error.message : "unknown",
+            timeoutMs: effectiveUseResolver ? effectiveResolverTimeoutMs : null,
+            configuredTimeoutMs: effectiveUseResolver ? configuredResolverTimeoutMs : null,
           }),
         );
       }
@@ -139,10 +204,16 @@ export async function POST(request: Request): Promise<Response> {
       headers.set("x-api-key", serverEnv.llmLayerApiKey);
     }
 
+    const sanitizedMetadata = metadata?.storyId ? { storyId: metadata.storyId } : undefined;
+    const upstreamPayload = {
+      story: storyForUpstream,
+      ...(sanitizedMetadata ? { metadata: sanitizedMetadata } : {}),
+    };
+
     const upstreamResponse = await fetch(`${serverEnv.llmLayerBaseUrl}/v1/events/extract`, {
       method: "POST",
       headers,
-      body: JSON.stringify(requestParseResult.data),
+      body: JSON.stringify(upstreamPayload),
       signal: upstreamController.signal,
       cache: "no-store",
     });

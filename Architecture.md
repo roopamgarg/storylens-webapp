@@ -3,7 +3,7 @@
 ## Overview
 
 `web-app` is a standalone Next.js application used to test extraction-to-graph workflows for story narratives.
-It integrates with `llm-layer` over HTTP via a server-side proxy route and now includes a deterministic pronoun-resolution subsystem for observability and debug preview.
+It integrates with `llm-layer` over HTTP via a server-side proxy route and includes a deterministic pronoun-resolution subsystem used for observability, debug preview, and optional extraction-time story substitution.
 Graph rendering supports two client-side modes over the same extracted event payload: timeline and character relations.
 
 Core goals:
@@ -12,18 +12,22 @@ Core goals:
 - Submit validated extraction requests to `llm-layer`.
 - Transform extracted events into a deterministic graph model.
 - Render graph output reliably for interactive testing.
-- Run optional pronoun-resolution analysis without mutating upstream extraction payloads in Phase 1.
+- Run optional pronoun-resolution analysis with per-request control over extraction-time substitution.
 
 ## Components
 
 - `src/app/page.tsx`
   - Client UI for story input, submission, cancel flow, diagnostics, and graph rendering.
-  - Adds a Debug-only pronoun preview panel with explicit `Generate Preview` trigger.
+  - Includes a default-on extraction toggle (`usePronounResolver`) and a separate Debug-only pronoun preview panel with explicit `Generate Preview` trigger.
 
 - `src/app/api/extract/route.ts`
   - Server-side proxy endpoint (`/api/extract`) to call `POST /v1/events/extract` on `llm-layer`.
   - Applies request validation, upstream response validation, timeout handling, cancellation propagation, concurrency limits, and error mapping.
-  - Runs `resolvePronouns()` only for structured logging when `ENABLE_PRONOUN_RESOLUTION=true`.
+  - Computes effective resolver usage from env + request metadata:
+    - `ENABLE_PRONOUN_RESOLUTION=true` and `metadata.usePronounResolver=true` => substitution path.
+    - `ENABLE_PRONOUN_RESOLUTION=true` and flag omitted/false => log-only path.
+    - `ENABLE_PRONOUN_RESOLUTION=false` => resolver disabled.
+  - Sanitizes control metadata before forwarding upstream; only `story` and `metadata.storyId` are forwarded.
 
 - `src/lib/pronoun-resolver.ts`
   - Isomorphic deterministic resolver (Node + browser safe).
@@ -31,7 +35,7 @@ Core goals:
 
 - `src/lib/contracts.ts`
   - Local schema definitions (Zod) for request/response/error payloads.
-  - Phase 1 keeps schemas unchanged; pronoun outputs are not forwarded upstream.
+  - Extends extract request metadata with optional `usePronounResolver` boolean for web-app route control.
 
 - `src/lib/graph-transform.ts`
   - Public graph-transform facade preserving the existing import surface.
@@ -69,13 +73,23 @@ Core goals:
 ```mermaid
 flowchart LR
   clientIn[ClientRequest] --> proxy[webApiExtractRoute]
+  clientIn --> toggle[resolverToggleDefaultTrue]
   clientIn --> preview[clientResolverPreview]
   preview -.->|debugToggleView| clientOut
   proxy --> zod[extractEventsRequestSchema]
   zod --> proxy
-  proxy --> resolver[pronounResolverWinkNlp]
-  resolver -.->|statsJsonLogOnly| logs[StructuredLogs]
-  proxy -->|unchangedRequestBody| upstream[llmLayerExtractEndpoint]
+  toggle --> proxy
+  proxy --> gate[envEnabledAndRequestFlagTrue]
+  gate -->|true| resolver[pronounResolverWinkNlp]
+  gate -->|false| logOnly[resolverLogOnlyPath]
+  logOnly -.->|statsJson| logs[StructuredLogs]
+  resolver --> timeoutBudget[resolverTimeoutBudget]
+  timeoutBudget -->|timeoutOrError| originalStory[originalStoryForUpstream]
+  timeoutBudget -->|resolvedAndNonEmpty| resolvedStory[resolvedStoryForUpstream]
+  timeoutBudget -->|noOp| originalStory
+  resolvedStory --> upstream[llmLayerExtractEndpoint]
+  originalStory --> upstream
+  resolver -.->|statsJson| logs
   upstream --> proxy
   proxy --> extractedEvents[ExtractedEvents]
   extractedEvents --> graphModeSelector[GraphModeSelector]
@@ -87,7 +101,7 @@ flowchart LR
   characterLayout --> clientOut
 ```
 
-## Pronoun Resolver (Phase 1)
+## Pronoun Resolver Behavior
 
 - Resolver contract (`ResolverResult`) includes:
   - `resolvedStory`
@@ -96,7 +110,7 @@ flowchart LR
   - optional `skipReason` (`input_too_long` or `model_failure`)
 - Tracked replacement pronouns:
   - `he`, `him`, `she`, object `her`, `they`, `them`
-- Deferred in Phase 1:
+- Deferred:
   - possessives (`his`, `their`, possessive `her`, etc.)
 - Algorithm:
   1. Build PERSON-like mention candidates from proper-noun spans.
@@ -126,12 +140,26 @@ When resolver is enabled on the server, the proxy emits one line of JSON:
 
 Privacy constraint: logs must never include raw `story`, `resolvedStory`, or `applied` text.
 
+### Extraction-time substitution rules
+
+- Substitution requires both:
+  - `ENABLE_PRONOUN_RESOLUTION=true`
+  - request `metadata.usePronounResolver=true`
+- Even when resolver runs, upstream substitution occurs only if:
+  - `resolvedStory` is non-empty after trim
+  - `pronounsResolved > 0`
+- On resolver timeout/error/skip/no-op, upstream uses original story text.
+- Request control metadata (`usePronounResolver`) is not forwarded upstream.
+
 ## Environment and Limits
 
 - `ENABLE_PRONOUN_RESOLUTION` (default `false`)
-  - Enables server-side resolver execution for structured logging.
+  - Enables resolver execution paths in the extraction route.
 - `PRONOUN_RESOLVER_MAX_CHARS` (default `10000`)
   - Hard cap for server resolver invocation.
+- `PRONOUN_RESOLVER_TIMEOUT_MS` (default `500`)
+  - Resolver timeout budget before fallback to original story.
+  - Effective runtime timeout is clamped to `min(PRONOUN_RESOLVER_TIMEOUT_MS, REQUEST_TIMEOUT_MS * 0.5)`.
 - `NEXT_PUBLIC_PRONOUN_RESOLVER_MAX_CHARS` (default `10000`)
   - Client preview guardrail in Debug panel.
 - `env.ts` warns at startup when server and client caps diverge.
@@ -169,7 +197,7 @@ Until checklist completion, Phase 1 remains **log-only** on the server.
 
 - Set `ENABLE_PRONOUN_RESOLUTION=false` and redeploy.
 - No migrations or data cleanup required.
-- Because Phase 1 never mutates upstream request body, rollback only removes extra CPU and logs.
+- With resolver disabled, upstream always receives original story text and control flag is ignored.
 
 ## Key Decisions
 
@@ -205,7 +233,7 @@ Until checklist completion, Phase 1 remains **log-only** on the server.
 
 - `LLM_LAYER_BASE_URL` must be valid and reachable by the Next.js server.
 - If `llm-layer` enforces authentication, `LLM_LAYER_API_KEY` must be configured.
-- Production promotion of resolver substitution is deferred to Phase 2 quality gates.
+- Production expansion of resolver substitution should remain gated by Phase 2 quality criteria.
 
 ## Phase 2 Promotion Scorecard
 
@@ -240,5 +268,6 @@ Phase 2 changes behavior (upstream may consume `resolvedStory` / substituted `st
 
 ### Current Status
 
-- Current production mode remains **Phase 1 log-only** with optional Debug preview.
-- Phase 2 score is **pending** until evaluation corpus metrics and staged reliability checks are completed.
+- Current route supports both log-only and substitution paths, controlled by env + per-request toggle.
+- Default web-app behavior sends `usePronounResolver=true`, while non-UI callers that omit the flag remain on original-story upstream behavior.
+- Phase 2 score is still used to govern broader rollout confidence and reliability checks.

@@ -96,11 +96,13 @@ type GraphControlsProps = {
   graphMode: GraphViewMode;
   characterEdgeStyle: CharacterEdgeStyle;
   includeSequenceEdges: boolean;
+  usePronounResolver: boolean;
   showResolverDebug: boolean;
   allowResolverDebug: boolean;
   onGraphModeChange: (mode: GraphViewMode) => void;
   onCharacterEdgeStyleChange: (style: CharacterEdgeStyle) => void;
   onIncludeSequenceEdgesChange: (include: boolean) => void;
+  onUsePronounResolverChange: (enabled: boolean) => void;
   onShowResolverDebugChange: (show: boolean) => void;
 };
 
@@ -157,6 +159,18 @@ function GraphControls(props: GraphControlsProps) {
           </select>
         </label>
       ) : null}
+
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={props.usePronounResolver}
+          onChange={(event) => props.onUsePronounResolverChange(event.target.checked)}
+        />
+        Use pronoun-resolved story for extraction
+      </label>
+      <p className="text-xs text-zinc-500">
+        This affects extraction payloads. Debug preview is separate and does not change request data.
+      </p>
 
       {props.allowResolverDebug ? (
         <label className="flex items-center gap-2 text-sm">
@@ -226,6 +240,7 @@ export default function Home() {
   const [includeSequenceEdges, setIncludeSequenceEdges] = useState(false);
   const [graphMode, setGraphMode] = useState<GraphViewMode>("timeline");
   const [characterEdgeStyle, setCharacterEdgeStyle] = useState<CharacterEdgeStyle>("cooccurrence");
+  const [usePronounResolver, setUsePronounResolver] = useState(true);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [activeStoryFingerprint, setActiveStoryFingerprint] = useState<string | null>(null);
   const [showResolverDebug, setShowResolverDebug] = useState(false);
@@ -377,7 +392,12 @@ export default function Home() {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ story: normalizedStory }),
+        body: JSON.stringify({
+          story: normalizedStory,
+          metadata: {
+            usePronounResolver,
+          },
+        }),
         signal: controller.signal,
       });
 
@@ -479,11 +499,13 @@ export default function Home() {
               graphMode={graphMode}
               characterEdgeStyle={characterEdgeStyle}
               includeSequenceEdges={includeSequenceEdges}
+              usePronounResolver={usePronounResolver}
               showResolverDebug={showResolverDebug}
               allowResolverDebug={allowResolverDebug}
               onGraphModeChange={setGraphMode}
               onCharacterEdgeStyleChange={setCharacterEdgeStyle}
               onIncludeSequenceEdgesChange={setIncludeSequenceEdges}
+              onUsePronounResolverChange={setUsePronounResolver}
               onShowResolverDebugChange={setShowResolverDebug}
             />
           </form>
@@ -492,7 +514,7 @@ export default function Home() {
             <div className="mt-4 rounded border border-zinc-800 bg-zinc-950 p-3 text-sm">
               <p className="text-xs uppercase tracking-wide text-zinc-400">Preview only</p>
               <p className="mt-1 text-zinc-300">
-                This preview does not change the extract request payload in Phase 1.
+                This preview does not change the extract request payload.
               </p>
               <div className="mt-3 flex items-center gap-2">
                 <button
