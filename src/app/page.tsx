@@ -39,6 +39,8 @@ type PreviewStats = ResolverResult["stats"] & {
   skipReason?: ResolverResult["skipReason"] | null;
 };
 
+type Theme = "light" | "dark";
+
 export type GraphRenderState = {
   showLargeGraphWarning: boolean;
   blockGraphRender: boolean;
@@ -51,7 +53,7 @@ A shadow beast attacks Borin near the gate.
 Aria defends Borin and the beast retreats into the dark.`;
 
 const panelWidths = {
-  left: { default: 420, min: 320, max: 560, collapse: 240 },
+  left: { default: 360, min: 280, max: 480, collapse: 220 },
   right: { default: 400, min: 320, max: 560, collapse: 240 },
   rail: 44,
 };
@@ -103,6 +105,7 @@ type GraphControlsProps = {
   characterEdgeStyle: CharacterEdgeStyle;
   includeSequenceEdges: boolean;
   usePronounResolver: boolean;
+  layout?: "horizontal" | "vertical" | "panel";
   onGraphModeChange: (mode: GraphViewMode) => void;
   onCharacterEdgeStyleChange: (style: CharacterEdgeStyle) => void;
   onIncludeSequenceEdgesChange: (include: boolean) => void;
@@ -110,71 +113,194 @@ type GraphControlsProps = {
 };
 
 function GraphControls(props: GraphControlsProps) {
-  return (
-    <div className="space-y-3">
-      <fieldset className="rounded-xl border border-white/10 bg-white/5 p-3">
-        <legend className="px-1 text-xs uppercase tracking-wide text-zinc-400">Graph mode</legend>
-        <div className="flex flex-wrap gap-3 text-sm">
-          <label className="flex items-center gap-2 text-zinc-200">
-            <input
-              type="radio"
-              name="graph-mode"
-              value="timeline"
-              checked={props.graphMode === "timeline"}
-              onChange={() => props.onGraphModeChange("timeline")}
-            />
-            Timeline
-          </label>
-          <label className="flex items-center gap-2 text-zinc-200">
-            <input
-              type="radio"
-              name="graph-mode"
-              value="character"
-              checked={props.graphMode === "character"}
-              onChange={() => props.onGraphModeChange("character")}
-            />
-            Character relations
-          </label>
+  const isVertical = props.layout === "vertical";
+  const isPanel = props.layout === "panel";
+  const toggleButtonClass = (isActive: boolean) =>
+    `rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+      isActive
+        ? "border-indigo-400/60 bg-indigo-500/20 text-indigo-100"
+        : "border-white/15 bg-white/5 text-zinc-200 hover:bg-white/10"
+    }`;
+
+  if (isPanel) {
+    return (
+      <div className="space-y-2.5 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <label className="text-xs text-zinc-300">Graph View</label>
+          <select
+            value={props.graphMode}
+            onChange={(event) => props.onGraphModeChange(event.target.value as GraphViewMode)}
+            className="min-w-32 rounded border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-zinc-200"
+            aria-label="Graph mode"
+          >
+            <option value="timeline">Timeline</option>
+            <option value="character">Character</option>
+          </select>
         </div>
-      </fieldset>
 
-      {props.graphMode === "timeline" ? (
-        <label className="flex items-center gap-2 text-sm text-zinc-200">
-          <input
-            type="checkbox"
-            checked={props.includeSequenceEdges}
-            onChange={(event) => props.onIncludeSequenceEdgesChange(event.target.checked)}
-          />
-          Include sequence edges
-        </label>
-      ) : null}
+        <div className="flex items-center justify-between gap-3">
+          <label className="text-xs text-zinc-300">Show Sequence Edges</label>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={props.includeSequenceEdges}
+            disabled={props.graphMode !== "timeline"}
+            onClick={() => props.onIncludeSequenceEdgesChange(!props.includeSequenceEdges)}
+            className={`relative inline-flex h-5 w-9 items-center border border-white/15 transition ${
+              props.includeSequenceEdges ? "bg-indigo-500/40" : "bg-white/10"
+            } ${props.graphMode !== "timeline" ? "opacity-50" : ""}`}
+          >
+            <span
+              className={`h-3.5 w-3.5 bg-white transition-transform ${
+                props.includeSequenceEdges ? "translate-x-4" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </div>
 
-      {props.graphMode === "character" ? (
-        <label className="flex items-center gap-2 text-sm text-zinc-200">
-          <span>Edge style:</span>
+        <div className="flex items-center justify-between gap-3">
+          <label className="text-xs text-zinc-300">Character Edge Style</label>
           <select
             value={props.characterEdgeStyle}
             onChange={(event) => props.onCharacterEdgeStyleChange(event.target.value as CharacterEdgeStyle)}
-            className="rounded-lg border border-white/15 bg-zinc-950/80 px-2 py-1 text-sm"
+            className="min-w-32 rounded border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-zinc-200 disabled:opacity-50"
+            disabled={props.graphMode !== "character"}
+            aria-label="Character edge style"
+          >
+            <option value="cooccurrence">Co-occurrence</option>
+            <option value="action_labeled">Action-labeled</option>
+          </select>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <label className="text-xs text-zinc-300">Pronoun Resolver</label>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={props.usePronounResolver}
+            onClick={() => props.onUsePronounResolverChange(!props.usePronounResolver)}
+            className={`relative inline-flex h-5 w-9 items-center border border-white/15 transition ${
+              props.usePronounResolver ? "bg-indigo-500/40" : "bg-white/10"
+            }`}
+          >
+            <span
+              className={`h-3.5 w-3.5 bg-white transition-transform ${
+                props.usePronounResolver ? "translate-x-4" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isVertical) {
+    return (
+      <div className="space-y-3">
+        <label className="block space-y-1 text-xs text-zinc-400">
+          <span className="uppercase tracking-wide">Graph mode</span>
+          <select
+            value={props.graphMode}
+            onChange={(event) => props.onGraphModeChange(event.target.value as GraphViewMode)}
+            className="w-full rounded-lg border border-white/15 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-200"
+            aria-label="Graph mode"
+          >
+            <option value="timeline">Timeline</option>
+            <option value="character">Character relations</option>
+          </select>
+        </label>
+
+        <label className="block space-y-1 text-xs text-zinc-400">
+          <span className="uppercase tracking-wide">Edge style</span>
+          <select
+            value={props.characterEdgeStyle}
+            onChange={(event) => props.onCharacterEdgeStyleChange(event.target.value as CharacterEdgeStyle)}
+            className="w-full rounded-lg border border-white/15 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-200 disabled:opacity-50"
+            disabled={props.graphMode !== "character"}
+            aria-label="Character edge style"
           >
             <option value="cooccurrence">Co-occurrence</option>
             <option value="action_labeled">Action-labeled</option>
           </select>
         </label>
-      ) : null}
 
-      <label className="flex items-center gap-2 text-sm text-zinc-200">
-        <input
-          type="checkbox"
-          checked={props.usePronounResolver}
-          onChange={(event) => props.onUsePronounResolverChange(event.target.checked)}
-        />
-        Use pronoun-resolved story for extraction
-      </label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            className={toggleButtonClass(props.includeSequenceEdges)}
+            onClick={() => props.onIncludeSequenceEdgesChange(!props.includeSequenceEdges)}
+            aria-pressed={props.includeSequenceEdges}
+            disabled={props.graphMode !== "timeline"}
+          >
+            Sequence edges
+          </button>
+          <button
+            type="button"
+            className={toggleButtonClass(props.usePronounResolver)}
+            onClick={() => props.onUsePronounResolverChange(!props.usePronounResolver)}
+            aria-pressed={props.usePronounResolver}
+          >
+            Pronoun resolver
+          </button>
+        </div>
+
+        <p className="text-xs text-zinc-500">
+          This affects extraction payloads. Debug preview is separate and does not change request data.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="overflow-x-auto">
+        <div className="flex min-w-max items-center gap-2 text-sm">
+          <label className="text-zinc-400">Mode</label>
+          <select
+            value={props.graphMode}
+            onChange={(event) => props.onGraphModeChange(event.target.value as GraphViewMode)}
+            className="rounded-lg border border-white/15 bg-zinc-950/80 px-2 py-1 text-sm text-zinc-200"
+            aria-label="Graph mode"
+          >
+            <option value="timeline">Timeline</option>
+            <option value="character">Character relations</option>
+          </select>
+
+          <label className="text-zinc-400">Edge style</label>
+          <select
+            value={props.characterEdgeStyle}
+            onChange={(event) => props.onCharacterEdgeStyleChange(event.target.value as CharacterEdgeStyle)}
+            className="rounded-lg border border-white/15 bg-zinc-950/80 px-2 py-1 text-sm text-zinc-200 disabled:opacity-50"
+            disabled={props.graphMode !== "character"}
+            aria-label="Character edge style"
+          >
+            <option value="cooccurrence">Co-occurrence</option>
+            <option value="action_labeled">Action-labeled</option>
+          </select>
+
+          <button
+            type="button"
+            className={toggleButtonClass(props.includeSequenceEdges)}
+            onClick={() => props.onIncludeSequenceEdgesChange(!props.includeSequenceEdges)}
+            aria-pressed={props.includeSequenceEdges}
+            disabled={props.graphMode !== "timeline"}
+          >
+            Sequence edges
+          </button>
+
+          <button
+            type="button"
+            className={toggleButtonClass(props.usePronounResolver)}
+            onClick={() => props.onUsePronounResolverChange(!props.usePronounResolver)}
+            aria-pressed={props.usePronounResolver}
+          >
+            Pronoun resolver
+          </button>
+        </div>
+      </div>
       <p className="text-xs text-zinc-500">
         This affects extraction payloads. Debug preview is separate and does not change request data.
       </p>
-
     </div>
   );
 }
@@ -202,7 +328,6 @@ function GraphDiagnostics(props: GraphDiagnosticsProps) {
     return severityMatches && categoryMatches;
   });
 
-  const categories = Array.from(new Set(diagnostics.map((diagnostic) => diagnostic.category))).sort();
   const errorsCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
   const warningsCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
 
@@ -214,75 +339,65 @@ function GraphDiagnostics(props: GraphDiagnosticsProps) {
   return (
     <div className="space-y-3 text-sm">
       <div className="rounded-2xl border border-white/10 bg-[#0d1425]/90 p-3">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-indigo-500/60 bg-indigo-500/15 px-3 py-1 text-xs font-medium text-indigo-200">
-            All {diagnostics.length}
-          </span>
-          <span className="rounded-full border border-red-500/60 bg-red-500/15 px-3 py-1 text-xs font-medium text-red-200">
-            Errors {errorsCount}
-          </span>
-          <span className="rounded-full border border-amber-500/60 bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-200">
-            Warnings {warningsCount}
-          </span>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <label className="text-xs text-zinc-400">
-            Severity
-            <select
-              value={props.severityFilter}
-              onChange={(event) =>
-                props.onSeverityFilterChange(event.target.value as "all" | "error" | "warning")
-              }
-              className="mt-1 w-full rounded-lg border border-white/15 bg-zinc-900/90 px-2 py-1 text-sm"
-            >
-              <option value="all">All</option>
-              <option value="error">Error</option>
-              <option value="warning">Warning</option>
-            </select>
-          </label>
-          <label className="text-xs text-zinc-400">
-            Category
-            <select
-              value={props.categoryFilter}
-              onChange={(event) =>
-                props.onCategoryFilterChange(
-                  event.target.value as "all" | GraphDiagnostic["category"],
-                )
-              }
-              className="mt-1 w-full rounded-lg border border-white/15 bg-zinc-900/90 px-2 py-1 text-sm"
-            >
-              <option value="all">All categories</option>
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="inline-flex w-full items-center gap-1 rounded-lg border border-white/10 bg-black/20 p-1 text-xs">
+          <button
+            type="button"
+            onClick={() => props.onSeverityFilterChange("all")}
+            className={`flex-1 px-2 py-1.5 ${
+              props.severityFilter === "all" ? "bg-white/10 text-zinc-100" : "text-zinc-400"
+            }`}
+          >
+            All <span className="ml-1 text-zinc-300">{diagnostics.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => props.onSeverityFilterChange("error")}
+            className={`flex-1 px-2 py-1.5 ${
+              props.severityFilter === "error" ? "bg-red-500/15 text-red-200" : "text-zinc-400"
+            }`}
+          >
+            Errors <span className="ml-1 text-zinc-300">{errorsCount}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => props.onSeverityFilterChange("warning")}
+            className={`flex-1 px-2 py-1.5 ${
+              props.severityFilter === "warning" ? "bg-amber-500/15 text-amber-200" : "text-zinc-400"
+            }`}
+          >
+            Warnings <span className="ml-1 text-zinc-300">{warningsCount}</span>
+          </button>
         </div>
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-[#0d1425]/90 p-3">
-        <p className="mb-2 text-xs uppercase tracking-wide text-zinc-400">Summary</p>
-        <div className="grid grid-cols-2 gap-2 text-xs">
+        <p className="mb-2 text-xs font-semibold text-zinc-300">Summary</p>
+        <div className="grid grid-cols-4 gap-2 text-center text-xs">
           <p className="rounded-lg border border-white/10 bg-black/20 p-2">
-            Events <span className="block text-base text-zinc-100">{props.eventsCount}</span>
+            <span className="block text-base font-semibold text-zinc-100">{props.eventsCount}</span>
+            <span className="text-zinc-400">Events</span>
           </p>
           <p className="rounded-lg border border-white/10 bg-black/20 p-2">
-            Edges <span className="block text-base text-zinc-100">{props.edgesCount}</span>
+            <span className="block text-base font-semibold text-zinc-100">{props.edgesCount}</span>
+            <span className="text-zinc-400">Edges</span>
           </p>
           <p className="rounded-lg border border-white/10 bg-black/20 p-2">
-            Issues{" "}
-            <span className="block text-base text-zinc-100">{props.meta?.diagnosticsSummary.total ?? 0}</span>
+            <span className="block text-base font-semibold text-red-300">{props.meta?.diagnosticsSummary.total ?? 0}</span>
+            <span className="text-zinc-400">Issues</span>
           </p>
           <p className="rounded-lg border border-white/10 bg-black/20 p-2">
-            Request <span className="block text-base text-zinc-100">{props.requestId ? "Live" : "Idle"}</span>
+            <span className="block text-base font-semibold text-zinc-100">
+              {props.meta?.diagnosticsObservability.runDurationMs
+                ? `${(props.meta.diagnosticsObservability.runDurationMs / 1000).toFixed(2)}s`
+                : "0.00s"}
+            </span>
+            <span className="text-zinc-400">Request Time</span>
           </p>
         </div>
       </div>
 
       <div className="max-h-[430px] space-y-2 overflow-auto rounded-2xl border border-white/10 bg-[#0d1425]/90 p-3">
-        <p className="text-xs uppercase tracking-wide text-zinc-400">Issues ({filteredDiagnostics.length})</p>
+        <p className="text-xs font-semibold text-zinc-300">Issues</p>
         {filteredDiagnostics.length === 0 ? (
           <p className="text-xs text-zinc-500">No diagnostics for current filters.</p>
         ) : (
@@ -310,10 +425,8 @@ function GraphDiagnostics(props: GraphDiagnosticsProps) {
                     {diagnostic.category.replace("_", " ")}
                   </p>
                   <span
-                    className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${
-                      diagnostic.severity === "error"
-                        ? "border-red-400/70 text-red-200"
-                        : "border-amber-400/70 text-amber-200"
+                    className={`text-[10px] font-medium uppercase tracking-wide ${
+                      diagnostic.severity === "error" ? "text-red-300" : "text-amber-300"
                     }`}
                   >
                     {diagnostic.severity}
@@ -330,8 +443,8 @@ function GraphDiagnostics(props: GraphDiagnosticsProps) {
       </div>
 
       <details className="rounded-2xl border border-white/10 bg-[#0d1425]/90 p-3">
-        <summary className="cursor-pointer text-xs uppercase tracking-wide text-zinc-300">
-          Diagnostics observability
+        <summary className="cursor-pointer text-xs font-semibold text-zinc-300">
+          Diagnostics Details
         </summary>
         <div className="mt-2 space-y-1 text-xs text-zinc-300">
           <p>
@@ -388,53 +501,6 @@ function GraphDiagnostics(props: GraphDiagnosticsProps) {
   );
 }
 
-type SurfaceCardProps = {
-  index: number;
-  title: string;
-  subtitle: string;
-  children: React.ReactNode;
-  collapsed?: boolean;
-  onToggleCollapsed?: () => void;
-};
-
-function SurfaceCard(props: SurfaceCardProps) {
-  return (
-    <section className="rounded-2xl border border-white/10 bg-[#0d1425]/90 p-4 shadow-[0_16px_30px_-20px_rgba(59,130,246,0.5)]">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-indigo-400/60 bg-indigo-500/20 text-xs font-semibold text-indigo-100">
-            {props.index}
-          </span>
-          <div>
-            <h2 className="text-base font-semibold text-zinc-100">{props.title}</h2>
-            <p className="text-xs text-zinc-400">{props.subtitle}</p>
-          </div>
-        </div>
-        {props.onToggleCollapsed ? (
-          <button
-            type="button"
-            onClick={props.onToggleCollapsed}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-zinc-200"
-            aria-label={`${props.collapsed ? "Expand" : "Collapse"} ${props.title} section`}
-          >
-            <svg
-              viewBox="0 0 20 20"
-              aria-hidden="true"
-              className={`h-4 w-4 transition-transform ${props.collapsed ? "rotate-180" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-            >
-              <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        ) : null}
-      </div>
-      {props.collapsed ? null : props.children}
-    </section>
-  );
-}
-
 type TopMetricProps = {
   label: string;
   value: string;
@@ -449,9 +515,9 @@ function TopMetric(props: TopMetricProps) {
         ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
         : "border-white/15 bg-white/5 text-zinc-100";
   return (
-    <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
+    <div className={`rounded-xl border px-2.5 py-1.5 ${toneClass}`}>
       <p className="text-[10px] uppercase tracking-wide text-zinc-400">{props.label}</p>
-      <p className="text-sm font-semibold">{props.value}</p>
+      <p className="text-xs font-semibold">{props.value}</p>
     </div>
   );
 }
@@ -485,6 +551,16 @@ function DiagnosticsMetaCard(props: {
 }
 
 export default function Home() {
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof window === "undefined") {
+      return "dark";
+    }
+    const storedTheme = window.localStorage.getItem("theme");
+    if (storedTheme === "light" || storedTheme === "dark") {
+      return storedTheme;
+    }
+    return "dark";
+  });
   const [story, setStory] = useState(sampleStory);
   const [events, setEvents] = useState<Event[]>([]);
   const [requestId, setRequestId] = useState<string | undefined>(undefined);
@@ -508,8 +584,9 @@ export default function Home() {
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [storySectionCollapsed, setStorySectionCollapsed] = useState(false);
-  const [settingsSectionCollapsed, setSettingsSectionCollapsed] = useState(false);
-  const [advancedSectionCollapsed, setAdvancedSectionCollapsed] = useState(false);
+  const [graphSettingsSectionCollapsed, setGraphSettingsSectionCollapsed] = useState(true);
+  const [advancedSectionCollapsed, setAdvancedSectionCollapsed] = useState(true);
+  const [rawEventsSectionCollapsed, setRawEventsSectionCollapsed] = useState(true);
   const [resizeState, setResizeState] = useState<{
     side: "left" | "right";
     startX: number;
@@ -522,6 +599,11 @@ export default function Home() {
   const abortRef = useRef<AbortController | null>(null);
   const resolverModuleRef = useRef<Promise<typeof import("@/lib/pronoun-resolver")> | null>(null);
   const previousHasCompletedAnalysisRef = useRef(false);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem("theme", theme);
+  }, [theme]);
 
   const graph = useMemo(() => {
     const transformed = transformEventsToGraph(events, {
@@ -813,18 +895,28 @@ export default function Home() {
 
   return (
     <main className={`ui-shell min-h-screen text-zinc-100 ${isResizing ? "select-none lg:cursor-col-resize" : ""}`}>
-      <div className="w-full space-y-3 p-3 lg:h-screen lg:max-h-screen lg:overflow-hidden">
-        <header className="-mx-3 -mt-3 border-b border-white/10 bg-[#0d1425]/95 px-4 py-2 shadow-[0_16px_40px_-30px_rgba(59,130,246,0.7)] lg:px-6 lg:py-2.5">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h1 className="text-xl font-semibold">Narrative Consistency Checker</h1>
-              <p className="text-xs text-zinc-400">Find contradictions and issues in your story</p>
+      <div className="w-full space-y-2 p-3 lg:h-screen lg:max-h-screen lg:overflow-hidden">
+        <header className="-mx-3 -mt-3 px-4 py-2 shadow-[0_16px_40px_-30px_rgba(59,130,246,0.7)] lg:px-5 lg:py-2">
+          <div className="flex items-center justify-between gap-3 overflow-x-auto whitespace-nowrap">
+            <div className="flex min-w-max items-center gap-3">
+              <h1 className="text-lg font-semibold">Narrative Consistency Checker</h1>
+              <button
+                type="button"
+                className="theme-toggle px-2.5 py-1 text-[11px] font-medium"
+                onClick={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
+              >
+                {theme === "light" ? "Switch to Dark" : "Switch to Light"}
+              </button>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid min-w-max grid-cols-4 gap-2">
               <TopMetric label="Last run" value={loading ? formatElapsedMs(elapsedMs) : "Ready"} />
               <TopMetric label="Events" value={String(events.length)} />
               <TopMetric label="Issues" value={String(issuesTotal)} tone={issuesErrors > 0 ? "error" : "neutral"} />
-              <TopMetric label="Warnings" value={String(issuesWarnings)} tone={issuesWarnings > 0 ? "warning" : "neutral"} />
+              <TopMetric
+                label="Warnings"
+                value={String(issuesWarnings)}
+                tone={issuesWarnings > 0 ? "warning" : "neutral"}
+              />
             </div>
           </div>
         </header>
@@ -855,172 +947,255 @@ export default function Home() {
                 </button>
               </div>
             ) : (
-              <section
-                className="space-y-4 overflow-auto pr-1"
-                style={{ width: leftPanelWidth }}
-              >
-                <SurfaceCard
-                  index={1}
-                  title="Story"
-                  subtitle="Paste your story below. We'll extract events and check for inconsistencies."
-                  collapsed={storySectionCollapsed}
-                  onToggleCollapsed={() => setStorySectionCollapsed((current) => !current)}
-                >
-                  <form className="space-y-3" onSubmit={onSubmit}>
-                    <textarea
-                      id="story-input"
-                      className="h-64 w-full rounded-xl border border-white/10 bg-black/25 p-3 font-mono text-sm"
-                      value={story}
-                      onChange={(event) => setStory(event.target.value)}
-                      maxLength={appLimits.maxStoryChars}
-                    />
-                    <div className="flex items-center justify-between text-xs text-zinc-400">
-                      <span>{story.trim().length.toLocaleString()} characters</span>
-                      {loading ? <span>{formatElapsedMs(elapsedMs)}</span> : null}
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-900/50 disabled:opacity-50"
-                      >
-                        {loading ? "Extracting..." : "Extract Graph"}
-                      </button>
+              <section className="overflow-auto pr-1" style={{ width: leftPanelWidth }}>
+                <div className="rounded-2xl border border-white/10 bg-[#0d1425]/90 shadow-[0_16px_30px_-20px_rgba(59,130,246,0.5)]">
+                  <div className="border-b border-white/10 p-3">
+                    <div className="mb-2.5 flex items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-sm font-semibold text-zinc-100">Story Input</h2>
+                        <p className="text-xs text-zinc-400">Paste your story below. We&apos;ll extract events and build the graph.</p>
+                      </div>
                       <button
                         type="button"
-                        disabled={!loading}
-                        onClick={cancelCurrentRequest}
-                        className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm disabled:opacity-50"
+                        onClick={() => setStorySectionCollapsed((current) => !current)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-zinc-200"
+                        aria-label={`${storySectionCollapsed ? "Expand" : "Collapse"} story input section`}
                       >
-                        Cancel
+                        <svg
+                          viewBox="0 0 20 20"
+                          aria-hidden="true"
+                          className={`h-4 w-4 transition-transform ${storySectionCollapsed ? "rotate-180" : ""}`}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                        >
+                          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
                       </button>
                     </div>
-                  </form>
-                </SurfaceCard>
-
-                <SurfaceCard
-                  index={2}
-                  title="Settings"
-                  subtitle="Adjust how the graph is built."
-                  collapsed={settingsSectionCollapsed}
-                  onToggleCollapsed={() => setSettingsSectionCollapsed((current) => !current)}
-                >
-                  <GraphControls
-                    graphMode={graphMode}
-                    characterEdgeStyle={characterEdgeStyle}
-                    includeSequenceEdges={includeSequenceEdges}
-                    usePronounResolver={usePronounResolver}
-                    onGraphModeChange={setGraphMode}
-                    onCharacterEdgeStyleChange={setCharacterEdgeStyle}
-                    onIncludeSequenceEdgesChange={setIncludeSequenceEdges}
-                    onUsePronounResolverChange={setUsePronounResolver}
-                  />
-                </SurfaceCard>
-
-                <SurfaceCard
-                  index={3}
-                  title="Advanced"
-                  subtitle="Debugging and inspection"
-                  collapsed={advancedSectionCollapsed}
-                  onToggleCollapsed={() => setAdvancedSectionCollapsed((current) => !current)}
-                >
-                  <DiagnosticsMetaCard
-                    eventsCount={events.length}
-                    edgesCount={graph.edges.length}
-                    issuesCount={issuesTotal}
-                    runDurationMs={graph.meta?.diagnosticsObservability.runDurationMs ?? 0}
-                  />
-                  {allowResolverDebug ? (
-                    <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-sm">
-                      <label className="flex items-center gap-2 text-sm text-zinc-200">
-                        <input
-                          type="checkbox"
-                          checked={showResolverDebug}
-                          onChange={(event) => setShowResolverDebug(event.target.checked)}
+                    {storySectionCollapsed ? null : (
+                      <form className="space-y-3" onSubmit={onSubmit}>
+                        <textarea
+                          id="story-input"
+                          className="h-56 w-full rounded-xl border border-white/10 bg-black/25 p-3 font-mono text-sm"
+                          value={story}
+                          onChange={(event) => setStory(event.target.value)}
+                          maxLength={appLimits.maxStoryChars}
                         />
-                        Debug: Pronoun resolver preview
-                      </label>
+                        <div className="flex items-center justify-between text-xs text-zinc-400">
+                          <span>{story.trim().length.toLocaleString()} characters</span>
+                          {loading ? <span>{formatElapsedMs(elapsedMs)}</span> : null}
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={loading}
+                          className="w-full rounded-xl bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white shadow-lg shadow-indigo-900/50 disabled:opacity-50"
+                        >
+                          {loading ? "Analyzing..." : "Analyze Story"}
+                        </button>
+                        {loading ? (
+                          <button
+                            type="button"
+                            onClick={cancelCurrentRequest}
+                            className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-1.5 text-sm"
+                          >
+                            Cancel
+                          </button>
+                        ) : null}
+                      </form>
+                    )}
+                  </div>
 
-                      {showResolverDebug ? (
-                        <>
-                          <p className="mt-3 text-xs uppercase tracking-wide text-zinc-400">Preview only</p>
-                          <p className="mt-1 text-zinc-300">
-                            This preview does not change the extract request payload.
+                  <div className="border-b border-white/10 p-3">
+                    <div className="mb-2.5 flex items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-sm font-semibold text-zinc-100">Graph Settings</h2>
+                        <p className="text-xs text-zinc-400">Configure rendering options.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setGraphSettingsSectionCollapsed((current) => !current)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-zinc-200"
+                        aria-label={`${graphSettingsSectionCollapsed ? "Expand" : "Collapse"} graph settings section`}
+                      >
+                        <svg
+                          viewBox="0 0 20 20"
+                          aria-hidden="true"
+                          className={`h-4 w-4 transition-transform ${graphSettingsSectionCollapsed ? "rotate-180" : ""}`}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                        >
+                          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                    </div>
+                    {graphSettingsSectionCollapsed ? null : (
+                      <GraphControls
+                        graphMode={graphMode}
+                        characterEdgeStyle={characterEdgeStyle}
+                        includeSequenceEdges={includeSequenceEdges}
+                        usePronounResolver={usePronounResolver}
+                        layout="panel"
+                        onGraphModeChange={setGraphMode}
+                        onCharacterEdgeStyleChange={setCharacterEdgeStyle}
+                        onIncludeSequenceEdgesChange={setIncludeSequenceEdges}
+                        onUsePronounResolverChange={setUsePronounResolver}
+                      />
+                    )}
+                  </div>
+
+                  <div className="border-b border-white/10 p-3">
+                    <div className="mb-2.5 flex items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-sm font-semibold text-zinc-100">Advanced (Debug)</h2>
+                        <p className="text-xs text-zinc-400">Developer debug tools and previews.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAdvancedSectionCollapsed((current) => !current)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-zinc-200"
+                        aria-label={`${advancedSectionCollapsed ? "Expand" : "Collapse"} advanced section`}
+                      >
+                        <svg
+                          viewBox="0 0 20 20"
+                          aria-hidden="true"
+                          className={`h-4 w-4 transition-transform ${advancedSectionCollapsed ? "rotate-180" : ""}`}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                        >
+                          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                    </div>
+                    {advancedSectionCollapsed ? null : (
+                      <>
+                        <DiagnosticsMetaCard
+                          eventsCount={events.length}
+                          edgesCount={graph.edges.length}
+                          issuesCount={issuesTotal}
+                          runDurationMs={graph.meta?.diagnosticsObservability.runDurationMs ?? 0}
+                        />
+                        {allowResolverDebug ? (
+                          <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-sm">
+                            <label className="flex items-center gap-2 text-sm text-zinc-200">
+                              <input
+                                type="checkbox"
+                                checked={showResolverDebug}
+                                onChange={(event) => setShowResolverDebug(event.target.checked)}
+                              />
+                              Debug: Pronoun resolver preview
+                            </label>
+
+                            {showResolverDebug ? (
+                              <>
+                                <p className="mt-3 text-xs uppercase tracking-wide text-zinc-400">Preview only</p>
+                                <p className="mt-1 text-zinc-300">
+                                  This preview does not change the extract request payload.
+                                </p>
+                                <div className="mt-3 flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={onGeneratePreview}
+                                    disabled={resolvingPreview}
+                                    className="rounded-lg border border-white/15 px-3 py-1 text-xs disabled:opacity-50"
+                                  >
+                                    {resolvingPreview ? "Generating preview..." : "Generate Preview"}
+                                  </button>
+                                  <span className="text-xs text-zinc-500">
+                                    max {appLimits.pronounPreviewMaxChars.toLocaleString()} chars
+                                  </span>
+                                </div>
+
+                                {resolverPreviewMessage ? (
+                                  <p className="mt-2 text-xs text-amber-300">{resolverPreviewMessage}</p>
+                                ) : null}
+
+                                <div className="mt-3 grid gap-2">
+                                  <div>
+                                    <p className="text-xs text-zinc-500">Original story</p>
+                                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-black p-2 text-xs text-zinc-300">
+                                      {story.trim() || "n/a"}
+                                    </pre>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-zinc-500">Resolved preview story</p>
+                                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-black p-2 text-xs text-zinc-300">
+                                      {resolvedPreview ?? "Run Generate Preview"}
+                                    </pre>
+                                  </div>
+                                  <div className="rounded border border-white/10 bg-zinc-900/80 p-2 text-xs">
+                                    <p>pronounsFound: {resolverPreviewStats?.pronounsFound ?? 0}</p>
+                                    <p>pronounsResolved: {resolverPreviewStats?.pronounsResolved ?? 0}</p>
+                                    <p>pronounsSkipped: {resolverPreviewStats?.pronounsSkipped ?? 0}</p>
+                                    <p>
+                                      skipReason:{" "}
+                                      {resolverPreviewStats ? (resolverPreviewStats.skipReason ?? "null") : "n/a"}
+                                    </p>
+                                  </div>
+                                </div>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {error ? (
+                          <div className="mt-3 rounded-xl border border-red-500/50 bg-red-500/10 p-3 text-sm">
+                            <p className="font-medium text-red-200">Error ({error.code})</p>
+                            <p className="mt-1 text-zinc-200">{error.message}</p>
+                            {error.requestId ? <p className="mt-1 text-xs">requestId: {error.requestId}</p> : null}
+                          </div>
+                        ) : null}
+                        {showLargeGraphWarning ? (
+                          <p className="mt-3 text-sm text-amber-300">
+                            {graphMode === "timeline"
+                              ? `Large graph warning: ${events.length} events may impact rendering performance.`
+                              : `Character graph warning: relation edges are above ${graph.meta?.thresholds.warn ?? appLimits.characterGraphWarnEdges}.`}
                           </p>
-                          <div className="mt-3 flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={onGeneratePreview}
-                              disabled={resolvingPreview}
-                              className="rounded-lg border border-white/15 px-3 py-1 text-xs disabled:opacity-50"
-                            >
-                              {resolvingPreview ? "Generating preview..." : "Generate Preview"}
-                            </button>
-                            <span className="text-xs text-zinc-500">
-                              max {appLimits.pronounPreviewMaxChars.toLocaleString()} chars
-                            </span>
-                          </div>
+                        ) : null}
+                        {blockGraphRender ? (
+                          <p className="mt-2 text-sm text-amber-200">
+                            {graphMode === "timeline"
+                              ? `Graph rendering disabled above ${appLimits.largeGraphBlockEvents} events. Reduce input or improve extraction granularity.`
+                              : `Character graph rendering disabled above ${graph.meta?.thresholds.block ?? appLimits.characterGraphBlockEdges} relation edges.`}
+                          </p>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
 
-                          {resolverPreviewMessage ? (
-                            <p className="mt-2 text-xs text-amber-300">{resolverPreviewMessage}</p>
-                          ) : null}
-
-                          <div className="mt-3 grid gap-2">
-                            <div>
-                              <p className="text-xs text-zinc-500">Original story</p>
-                              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-black p-2 text-xs text-zinc-300">
-                                {story.trim() || "n/a"}
-                              </pre>
-                            </div>
-                            <div>
-                              <p className="text-xs text-zinc-500">Resolved preview story</p>
-                              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-black p-2 text-xs text-zinc-300">
-                                {resolvedPreview ?? "Run Generate Preview"}
-                              </pre>
-                            </div>
-                            <div className="rounded border border-white/10 bg-zinc-900/80 p-2 text-xs">
-                              <p>pronounsFound: {resolverPreviewStats?.pronounsFound ?? 0}</p>
-                              <p>pronounsResolved: {resolverPreviewStats?.pronounsResolved ?? 0}</p>
-                              <p>pronounsSkipped: {resolverPreviewStats?.pronounsSkipped ?? 0}</p>
-                              <p>
-                                skipReason:{" "}
-                                {resolverPreviewStats ? (resolverPreviewStats.skipReason ?? "null") : "n/a"}
-                              </p>
-                            </div>
-                          </div>
-                        </>
-                      ) : null}
+                  <div className="p-3">
+                    <div className="mb-2.5 flex items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-sm font-semibold text-zinc-100">Raw Events</h2>
+                        <p className="text-xs text-zinc-400">Inspect extracted events payload.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRawEventsSectionCollapsed((current) => !current)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-zinc-200"
+                        aria-label={`${rawEventsSectionCollapsed ? "Expand" : "Collapse"} raw events section`}
+                      >
+                        <svg
+                          viewBox="0 0 20 20"
+                          aria-hidden="true"
+                          className={`h-4 w-4 transition-transform ${rawEventsSectionCollapsed ? "rotate-180" : ""}`}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                        >
+                          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
                     </div>
-                  ) : null}
-
-                  {error ? (
-                    <div className="mt-3 rounded-xl border border-red-500/50 bg-red-500/10 p-3 text-sm">
-                      <p className="font-medium text-red-200">Error ({error.code})</p>
-                      <p className="mt-1 text-zinc-200">{error.message}</p>
-                      {error.requestId ? <p className="mt-1 text-xs">requestId: {error.requestId}</p> : null}
-                    </div>
-                  ) : null}
-                  {showLargeGraphWarning ? (
-                    <p className="mt-3 text-sm text-amber-300">
-                      {graphMode === "timeline"
-                        ? `Large graph warning: ${events.length} events may impact rendering performance.`
-                        : `Character graph warning: relation edges are above ${graph.meta?.thresholds.warn ?? appLimits.characterGraphWarnEdges}.`}
-                    </p>
-                  ) : null}
-                  {blockGraphRender ? (
-                    <p className="mt-2 text-sm text-amber-200">
-                      {graphMode === "timeline"
-                        ? `Graph rendering disabled above ${appLimits.largeGraphBlockEvents} events. Reduce input or improve extraction granularity.`
-                        : `Character graph rendering disabled above ${graph.meta?.thresholds.block ?? appLimits.characterGraphBlockEdges} relation edges.`}
-                    </p>
-                  ) : null}
-                  <details className="mt-3">
-                    <summary className="cursor-pointer text-sm text-zinc-300">Raw events JSON</summary>
-                    <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-black/60 p-3 text-xs text-zinc-300">
-                      {JSON.stringify(events, null, 2)}
-                    </pre>
-                  </details>
-                </SurfaceCard>
+                    {rawEventsSectionCollapsed ? null : (
+                      <pre className="max-h-64 overflow-auto rounded-lg bg-black/60 p-3 text-xs text-zinc-300">
+                        {JSON.stringify(events, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                </div>
               </section>
             )}
 
@@ -1033,19 +1208,21 @@ export default function Home() {
               />
             ) : null}
 
-            <section className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-[#0d1425]/90 p-3 lg:overflow-hidden">
-            <div className="mb-3 flex items-center justify-between gap-3 px-2">
+            <section className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-[#0d1425]/90 p-2.5 lg:overflow-hidden">
+            <div className="mb-2 flex items-center justify-between gap-3 px-1">
               <div>
-                <h2 className="text-lg font-semibold">Event Graph</h2>
+                <h2 className="text-base font-semibold">Event Graph</h2>
                 <p className="text-xs text-zinc-400">
                   Timeline view of events. Red indicates inconsistencies.
                 </p>
               </div>
-              <div className="rounded-lg border border-white/15 bg-white/5 px-3 py-1 text-xs text-zinc-300">
-                {graphMode === "timeline" ? "Timeline" : "Character"}
+              <div className="flex items-center gap-2">
+                <div className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-zinc-300">
+                  {graphMode === "timeline" ? "Timeline" : "Character"}
+                </div>
               </div>
             </div>
-            <div className="h-[540px] rounded-xl border border-white/10 bg-black/25 lg:h-[calc(100%-52px)]">
+            <div className="h-[500px] rounded-xl border border-white/10 bg-black/25 lg:h-[calc(100%-42px)]">
               {blockGraphRender ? (
                 <div className="flex h-full items-center justify-center text-zinc-400">
                   Graph hidden due to event volume.
@@ -1104,13 +1281,13 @@ export default function Home() {
               </div>
             ) : (
               <aside
-                className="space-y-3 rounded-2xl border border-white/10 bg-[#0d1425]/90 p-4 overflow-auto"
+                className="space-y-3 rounded-2xl border border-white/10 bg-[#0d1425]/90 p-3 overflow-auto"
                 style={{ width: rightPanelWidth }}
               >
                 <div>
                   <div>
-                    <h2 className="text-lg font-semibold">Issues</h2>
-                    <p className="text-xs text-zinc-400">Rule hits, metrics and observability</p>
+                    <h2 className="text-lg font-semibold">Diagnostics</h2>
+                    <p className="text-xs text-zinc-400">Issues and quality insights about your story</p>
                   </div>
                 </div>
                 <GraphDiagnostics
