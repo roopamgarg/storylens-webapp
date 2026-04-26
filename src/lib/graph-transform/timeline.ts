@@ -3,6 +3,7 @@ import type { Edge, Node } from "@xyflow/react";
 import type { Event } from "@/lib/contracts";
 
 import {
+  DIAGNOSTICS_SCHEMA_VERSION,
   STORY_END_NODE_ID,
   STORY_START_NODE_ID,
   type GraphEdgeData,
@@ -263,12 +264,21 @@ export function transformTimelineGraph(
   ).length;
 
   const meta: GraphTransformMeta = {
+    diagnosticsSchemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
     mode: "timeline",
     relationEdgeCount: 0,
     fallbackOrderCount,
     densityStatus: "ok",
     thresholds: { warn: Number.MAX_SAFE_INTEGER, block: Number.MAX_SAFE_INTEGER },
     droppedEventCount: 0,
+    diagnostics: [],
+    diagnosticsSummary: { total: 0, errors: 0, warnings: 0 },
+    diagnosticsObservability: {
+      runDurationMs: 0,
+      perRuleHitCount: {},
+      degradedModeCount: 0,
+    },
+    ruleReadiness: [],
   };
 
   return {

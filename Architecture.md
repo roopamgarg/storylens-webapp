@@ -101,6 +101,72 @@ flowchart LR
   characterLayout --> clientOut
 ```
 
+## Story Diagnostics (Phase 1)
+
+### Overview
+
+The graph pipeline now includes a deterministic diagnostics stage that classifies structural narrative issues into `error` and `warning` severities. Diagnostics are computed from extracted `events[]`, attached to transform metadata, and projected back onto graph nodes/edges for visual highlighting and right-panel inspection.
+
+### Components
+
+- `src/lib/story-diagnostics.ts`
+  - Rule engine for Phase 1 graph-derivable categories:
+    - timeline (`missing_temporal_edge`, `simultaneity_conflict`)
+    - causality (`missing_cause`)
+    - spatial (`location_transition_missing`, `travel_time_violation`)
+    - redundancy (`duplicate_event`)
+    - missing links (`missing_interaction`)
+    - dependency (`dependency_reversed`)
+  - Produces stable diagnostic IDs (`category + subtype + evidence-hash`) and deduplicated findings.
+
+- `src/lib/contracts.ts`
+  - Defines diagnostics contract (`graphDiagnosticSchema`) with:
+    - `category`, `subtype`, `severity`, `message`
+    - optional `confidence`, `nodeIds`, `edgeIds`, and structured `evidence`.
+
+- `src/lib/graph-transform.ts`
+  - Runs diagnostics after mode-specific graph construction.
+  - Adds metadata fields:
+    - `diagnosticsSchemaVersion`
+    - `diagnostics[]`
+    - `diagnosticsSummary`
+    - `ruleReadiness[]`
+  - Applies severity-based highlighting to implicated nodes and edges.
+
+- `src/app/page.tsx`
+  - Three-column layout on desktop:
+    - left: story input/control panel
+    - center: graph canvas
+    - right: diagnostics panel
+  - Diagnostics panel supports severity/category filters and incident list.
+  - On smaller breakpoints, diagnostics panel shifts below the graph.
+
+### Diagnostics Flow
+
+```mermaid
+flowchart LR
+  extractedEvents[ExtractedEvents] --> transformBuilder[TimelineOrCharacterTransform]
+  transformBuilder --> diagnosticsEngine[StoryDiagnosticsEngine]
+  diagnosticsEngine --> dedupeStage[DedupAndSeverityPrecedence]
+  dedupeStage --> metaAttach[GraphMetaDiagnosticsAttach]
+  metaAttach --> highlightMap[NodeEdgeHighlightProjection]
+  highlightMap --> graphCanvas[GraphCanvasCenter]
+  metaAttach --> diagnosticsPanel[DiagnosticsPanelRight]
+```
+
+### Key Decisions
+
+- Diagnostics are **fail-open** at UI level: graph rendering remains available even when diagnostics are empty or filtered out.
+- Structural and high-confidence findings are eligible for `error`; uncertain heuristics remain `warning`.
+- Metadata contract is versioned (`diagnosticsSchemaVersion`) to keep future rule expansion backward compatible.
+- Observability metadata is attached to graph transform output as `diagnosticsObservability`:
+  - `runDurationMs`
+  - `perRuleHitCount`
+  - `degradedModeCount`
+- Runtime telemetry events are emitted from transform execution:
+  - `story_diagnostics_run`
+  - `story_diagnostics_rule_hit`
+
 ## Pronoun Resolver Behavior
 
 - Resolver contract (`ResolverResult`) includes:

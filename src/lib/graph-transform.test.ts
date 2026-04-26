@@ -36,6 +36,25 @@ function buildRelationEvents(edgeCount: number): Event[] {
   return events;
 }
 
+function buildTimelinePerfEvents(count: number): Event[] {
+  const events: Event[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const paddedCounter = (index + 1).toString().padStart(12, "0");
+    events.push({
+      ...baseEvent,
+      eventId: `10000000-0000-4000-8000-${paddedCounter}`,
+      actors: [`Actor ${index % 40}`],
+      targets: [`Target ${index % 75}`],
+      action: index % 2 === 0 ? "MOVE" : "ATTACK",
+      location: `Zone ${index % 20}`,
+      timeHint: `2026-04-26T10:${String(index % 60).padStart(2, "0")}:00Z`,
+      sourceText: `Synthetic event ${index}`,
+      confidence: 0.9,
+    });
+  }
+  return events;
+}
+
 describe("transformEventsToGraph", () => {
   it("deduplicates entities using normalized identity", () => {
     const events: Event[] = [
@@ -252,5 +271,126 @@ describe("transformEventsToGraph", () => {
       characterEdgeStyle: "action_labeled",
     });
     expect(blockAt.meta?.densityStatus).toBe("blocked");
+  });
+
+  it("produces diagnostics summary and schema version in graph metadata", () => {
+    const events: Event[] = [
+      {
+        ...baseEvent,
+        eventId: "abcd1111-1111-4111-8111-111111111111",
+        action: "ATTACK",
+        actors: ["Aria"],
+        targets: ["Beast"],
+        sourceText: "Aria attacks the beast.",
+      },
+      {
+        ...baseEvent,
+        eventId: "abcd2222-2222-4222-8222-222222222222",
+        action: "ATTACK",
+        actors: ["Aria"],
+        targets: ["Beast"],
+        sourceText: "Aria attacks the beast.",
+      },
+    ];
+
+    const graph = transformEventsToGraph(events, { mode: "timeline" });
+    expect(graph.meta?.diagnosticsSchemaVersion).toBe(1);
+    expect(graph.meta?.diagnosticsSummary.total).toBeGreaterThan(0);
+    expect(graph.meta?.diagnostics.length).toBe(graph.meta?.diagnosticsSummary.total);
+  });
+
+  it("highlights nodes when diagnostics are present", () => {
+    const events: Event[] = [
+      {
+        ...baseEvent,
+        eventId: "dcba1111-1111-4111-8111-111111111111",
+        action: "ATTACK",
+        actors: ["Aria"],
+        targets: ["Beast"],
+        sourceText: "Aria attacks the beast.",
+      },
+      {
+        ...baseEvent,
+        eventId: "dcba2222-2222-4222-8222-222222222222",
+        action: "ATTACK",
+        actors: ["Aria"],
+        targets: ["Beast"],
+        sourceText: "Aria attacks the beast.",
+      },
+    ];
+    const graph = transformEventsToGraph(events, { includeSequenceEdges: false });
+    const diagnosticNode = graph.nodes.find((node) => (node.data.diagnosticIds ?? []).length > 0);
+    expect(diagnosticNode).toBeDefined();
+    expect(diagnosticNode?.data.diagnosticSeverity).toBeDefined();
+  });
+
+  it("captures diagnostics observability counters", () => {
+    const events: Event[] = [
+      {
+        ...baseEvent,
+        eventId: "beef1111-1111-4111-8111-111111111111",
+        action: "ATTACK",
+        actors: ["Aria"],
+        targets: ["Beast"],
+        sourceText: "Aria attacks beast at castle.",
+        location: "Castle",
+        timeHint: "2026-01-01T10:00:00Z",
+      },
+      {
+        ...baseEvent,
+        eventId: "beef2222-2222-4222-8222-222222222222",
+        action: "ATTACK",
+        actors: ["Aria"],
+        targets: ["Beast"],
+        sourceText: "Aria attacks beast at forest.",
+        location: "Forest",
+        timeHint: "2026-01-01T10:00:00Z",
+      },
+    ];
+
+    const graph = transformEventsToGraph(events, { mode: "timeline" });
+    expect(graph.meta?.diagnosticsObservability.runDurationMs).toBeGreaterThanOrEqual(0);
+    expect(
+      graph.meta?.diagnosticsObservability.perRuleHitCount["timeline.simultaneity_conflict"],
+    ).toBeGreaterThan(0);
+  });
+
+  it("detects event order violation from timeline hints", () => {
+    const events: Event[] = [
+      {
+        ...baseEvent,
+        eventId: "feed1111-1111-4111-8111-111111111111",
+        actors: ["Aria"],
+        timeHint: "2026-01-02T12:00:00Z",
+      },
+      {
+        ...baseEvent,
+        eventId: "feed2222-2222-4222-8222-222222222222",
+        actors: ["Aria"],
+        timeHint: "2026-01-01T12:00:00Z",
+      },
+    ];
+    const graph = transformEventsToGraph(events, { mode: "timeline" });
+    expect(
+      graph.meta?.diagnostics.some((diagnostic) => diagnostic.subtype === "event_order_violation"),
+    ).toBe(true);
+  });
+
+  it("keeps diagnostics runtime within budget for large synthetic graphs", () => {
+    const events = buildTimelinePerfEvents(1000);
+    const startedAt = Date.now();
+    const graph = transformEventsToGraph(events, { mode: "timeline", includeSequenceEdges: true });
+    const elapsedMs = Date.now() - startedAt;
+    expect(graph.meta?.diagnosticsObservability.runDurationMs).toBeLessThanOrEqual(1200);
+    expect(elapsedMs).toBeLessThanOrEqual(2000);
+  });
+
+  it("supports feature-flag style diagnostics disablement", () => {
+    const graph = transformEventsToGraph(buildTimelinePerfEvents(20), {
+      mode: "timeline",
+      enableDiagnostics: false,
+    });
+    expect(graph.meta?.diagnostics).toEqual([]);
+    expect(graph.meta?.diagnosticsSummary.total).toBe(0);
   });
 });

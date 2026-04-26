@@ -5,6 +5,7 @@ import { appLimits } from "@/lib/constants";
 
 import {
   classifyDensity,
+  DIAGNOSTICS_SCHEMA_VERSION,
   lexicalCompare,
   type CharacterEdgeStyle,
   type GraphEdgeData,
@@ -134,6 +135,7 @@ export function transformCharacterGraph(
   };
 
   const meta: GraphTransformMeta = {
+    diagnosticsSchemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
     mode: "character",
     characterEdgeStyle: style,
     relationEdgeCount,
@@ -141,6 +143,14 @@ export function transformCharacterGraph(
     densityStatus: classifyDensity(relationEdgeCount, thresholds),
     thresholds,
     droppedEventCount,
+    diagnostics: [],
+    diagnosticsSummary: { total: 0, errors: 0, warnings: 0 },
+    diagnosticsObservability: {
+      runDurationMs: 0,
+      perRuleHitCount: {},
+      degradedModeCount: 0,
+    },
+    ruleReadiness: [],
   };
 
   return {

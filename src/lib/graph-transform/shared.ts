@@ -1,6 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 
-import type { ActionType, Event } from "@/lib/contracts";
+import type { ActionType, DiagnosticSeverity, Event, GraphDiagnostic } from "@/lib/contracts";
 
 export type GraphViewMode = "timeline" | "character";
 export type CharacterEdgeStyle = "cooccurrence" | "action_labeled";
@@ -20,6 +20,8 @@ export type GraphNodeData = {
   detail?: string;
   event?: Event;
   timeOrderingSource?: TimeOrderingSource;
+  diagnosticIds?: string[];
+  diagnosticSeverity?: DiagnosticSeverity;
 };
 
 export type CooccurrenceEdgeData = {
@@ -39,6 +41,7 @@ export type TimelineEdgeData = {
 export type GraphEdgeData = CooccurrenceEdgeData | ActionLabeledEdgeData | TimelineEdgeData;
 
 export type GraphTransformMeta = {
+  diagnosticsSchemaVersion: number;
   mode: GraphViewMode;
   characterEdgeStyle?: CharacterEdgeStyle;
   relationEdgeCount: number;
@@ -49,6 +52,18 @@ export type GraphTransformMeta = {
     block: number;
   };
   droppedEventCount: number;
+  diagnostics: GraphDiagnostic[];
+  diagnosticsSummary: {
+    total: number;
+    errors: number;
+    warnings: number;
+  };
+  diagnosticsObservability: {
+    runDurationMs: number;
+    perRuleHitCount: Record<string, number>;
+    degradedModeCount: number;
+  };
+  ruleReadiness: RuleReadinessEntry[];
 };
 
 export type GraphTransformResult = {
@@ -61,10 +76,19 @@ export type GraphTransformOptions = {
   includeSequenceEdges?: boolean;
   mode?: GraphViewMode;
   characterEdgeStyle?: CharacterEdgeStyle;
+  enableDiagnostics?: boolean;
 };
 
 export const STORY_START_NODE_ID = "story:start";
 export const STORY_END_NODE_ID = "story:end";
+export const DIAGNOSTICS_SCHEMA_VERSION = 1;
+
+export type RuleReadinessEntry = {
+  ruleId: string;
+  requiredSignals: string[];
+  degradedModeBehavior: string;
+  enabled: boolean;
+};
 
 export function normalizeEntityName(input: string): string {
   return input.trim().replace(/\s+/g, " ").toLowerCase();
@@ -96,7 +120,17 @@ export function makeTimelineEdgeId(
   return `${kind}:${source}->${target}`;
 }
 
-export function makeNodeStyles(kind: GraphNodeKind): Node<GraphNodeData>["style"] {
+export function makeNodeStyles(
+  kind: GraphNodeKind,
+  diagnosticSeverity?: DiagnosticSeverity,
+): Node<GraphNodeData>["style"] {
+  const diagnosticAccent =
+    diagnosticSeverity === "error"
+      ? { border: "1px solid #dc2626", boxShadow: "0 0 0 1px rgba(220,38,38,0.35)" }
+      : diagnosticSeverity === "warning"
+        ? { border: "1px solid #d97706", boxShadow: "0 0 0 1px rgba(217,119,6,0.35)" }
+        : null;
+
   if (kind === "boundary") {
     return {
       width: 140,
@@ -108,6 +142,7 @@ export function makeNodeStyles(kind: GraphNodeKind): Node<GraphNodeData>["style"
       fontSize: 12,
       lineHeight: 1.3,
       textAlign: "center",
+      ...(diagnosticAccent ?? {}),
     };
   }
 
@@ -123,6 +158,7 @@ export function makeNodeStyles(kind: GraphNodeKind): Node<GraphNodeData>["style"
       lineHeight: 1.3,
       whiteSpace: "normal",
       wordBreak: "break-word",
+      ...(diagnosticAccent ?? {}),
     };
   }
 
@@ -137,6 +173,7 @@ export function makeNodeStyles(kind: GraphNodeKind): Node<GraphNodeData>["style"
     lineHeight: 1.35,
     whiteSpace: "normal",
     wordBreak: "break-word",
+    ...(diagnosticAccent ?? {}),
   };
 }
 

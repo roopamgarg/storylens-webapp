@@ -16,6 +16,7 @@ import {
   extractEventsResponseSchema,
   type ErrorCode,
   type Event,
+  type GraphDiagnostic,
 } from "@/lib/contracts";
 import { appLimits } from "@/lib/constants";
 import { applyDagreLayout } from "@/lib/graph-layout";
@@ -192,11 +193,62 @@ type GraphDiagnosticsProps = {
   nodesCount: number;
   edgesCount: number;
   meta?: GraphTransformMeta;
+  severityFilter: "all" | "error" | "warning";
+  categoryFilter: "all" | GraphDiagnostic["category"];
+  onSeverityFilterChange: (value: "all" | "error" | "warning") => void;
+  onCategoryFilterChange: (value: "all" | GraphDiagnostic["category"]) => void;
 };
 
 function GraphDiagnostics(props: GraphDiagnosticsProps) {
+  const diagnostics = props.meta?.diagnostics ?? [];
+  const filteredDiagnostics = diagnostics.filter((diagnostic) => {
+    const severityMatches =
+      props.severityFilter === "all" || diagnostic.severity === props.severityFilter;
+    const categoryMatches =
+      props.categoryFilter === "all" || diagnostic.category === props.categoryFilter;
+    return severityMatches && categoryMatches;
+  });
+
+  const categories = Array.from(new Set(diagnostics.map((diagnostic) => diagnostic.category))).sort();
+
   return (
-    <div className="mt-4 rounded border border-zinc-800 bg-zinc-950 p-3 text-sm">
+    <div className="rounded border border-zinc-800 bg-zinc-950 p-3 text-sm">
+      <div className="mb-3 grid gap-2">
+        <label className="text-xs text-zinc-400">
+          Severity
+          <select
+            value={props.severityFilter}
+            onChange={(event) =>
+              props.onSeverityFilterChange(event.target.value as "all" | "error" | "warning")
+            }
+            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm"
+          >
+            <option value="all">All</option>
+            <option value="error">Error</option>
+            <option value="warning">Warning</option>
+          </select>
+        </label>
+        <label className="text-xs text-zinc-400">
+          Category
+          <select
+            value={props.categoryFilter}
+            onChange={(event) =>
+              props.onCategoryFilterChange(
+                event.target.value as "all" | GraphDiagnostic["category"],
+              )
+            }
+            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm"
+          >
+            <option value="all">All categories</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <p>
         requestId: <span className="text-zinc-300">{props.requestId ?? "n/a"}</span>
       </p>
@@ -227,6 +279,66 @@ function GraphDiagnostics(props: GraphDiagnosticsProps) {
       <p>
         densityStatus: <span className="text-zinc-300">{props.meta?.densityStatus ?? "ok"}</span>
       </p>
+      <p>
+        diagnosticsSchemaVersion:{" "}
+        <span className="text-zinc-300">{props.meta?.diagnosticsSchemaVersion ?? 1}</span>
+      </p>
+      <p>
+        diagnostics: <span className="text-zinc-300">{props.meta?.diagnosticsSummary.total ?? 0}</span> (
+        <span className="text-red-300">{props.meta?.diagnosticsSummary.errors ?? 0} errors</span>,{" "}
+        <span className="text-amber-300">{props.meta?.diagnosticsSummary.warnings ?? 0} warnings</span>)
+      </p>
+      <p>
+        runDurationMs:{" "}
+        <span className="text-zinc-300">{props.meta?.diagnosticsObservability.runDurationMs ?? 0}</span>
+      </p>
+      <p>
+        degradedModeCount:{" "}
+        <span className="text-zinc-300">
+          {props.meta?.diagnosticsObservability.degradedModeCount ?? 0}
+        </span>
+      </p>
+
+      <div className="mt-3 max-h-[320px] space-y-2 overflow-auto border-t border-zinc-800 pt-2">
+        {props.meta?.diagnosticsObservability.perRuleHitCount ? (
+          <div className="rounded border border-zinc-800 bg-zinc-900/60 p-2 text-xs text-zinc-400">
+            <p className="mb-1 font-medium text-zinc-300">Rule hits</p>
+            {Object.entries(props.meta.diagnosticsObservability.perRuleHitCount).length === 0 ? (
+              <p>n/a</p>
+            ) : (
+              Object.entries(props.meta.diagnosticsObservability.perRuleHitCount)
+                .sort((left, right) => right[1] - left[1])
+                .slice(0, 8)
+                .map(([ruleId, count]) => (
+                  <p key={ruleId}>
+                    {ruleId}: <span className="text-zinc-200">{count}</span>
+                  </p>
+                ))
+            )}
+          </div>
+        ) : null}
+
+        {filteredDiagnostics.length === 0 ? (
+          <p className="text-xs text-zinc-500">No diagnostics for current filters.</p>
+        ) : (
+          filteredDiagnostics.slice(0, 40).map((diagnostic) => (
+            <article
+              key={diagnostic.id}
+              className={`rounded border p-2 text-xs ${
+                diagnostic.severity === "error"
+                  ? "border-red-800 bg-red-950/30"
+                  : "border-amber-800 bg-amber-950/20"
+              }`}
+            >
+              <p className="font-medium">
+                {diagnostic.severity.toUpperCase()} - {diagnostic.category}/{diagnostic.subtype}
+              </p>
+              <p className="mt-1 text-zinc-300">{diagnostic.message}</p>
+              <p className="mt-1 text-zinc-400">id: {diagnostic.id}</p>
+            </article>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -248,7 +360,10 @@ export default function Home() {
   const [resolverPreviewStats, setResolverPreviewStats] = useState<PreviewStats | null>(null);
   const [resolverPreviewMessage, setResolverPreviewMessage] = useState<string | null>(null);
   const [resolvingPreview, setResolvingPreview] = useState(false);
+  const [severityFilter, setSeverityFilter] = useState<"all" | "error" | "warning">("all");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | GraphDiagnostic["category"]>("all");
   const allowResolverDebug = process.env.NODE_ENV !== "production";
+  const diagnosticsEnabled = process.env.NEXT_PUBLIC_STORY_DIAGNOSTICS_PHASE1_ENABLED !== "false";
 
   const timerRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -259,6 +374,7 @@ export default function Home() {
       includeSequenceEdges,
       mode: graphMode,
       characterEdgeStyle,
+      enableDiagnostics: diagnosticsEnabled,
     });
     const laidOutNodes = applyDagreLayout(transformed.nodes, transformed.edges, { mode: graphMode });
     return {
@@ -266,7 +382,7 @@ export default function Home() {
       edges: transformed.edges,
       meta: transformed.meta,
     };
-  }, [events, includeSequenceEdges, graphMode, characterEdgeStyle]);
+  }, [events, includeSequenceEdges, graphMode, characterEdgeStyle, diagnosticsEnabled]);
 
   const { showLargeGraphWarning, blockGraphRender } = resolveGraphRenderState(
     graphMode,
@@ -453,7 +569,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 p-4 lg:h-screen lg:flex-row">
+      <div className="mx-auto flex w-full max-w-[1700px] flex-col gap-4 p-4 lg:h-screen lg:flex-row">
         <section className="w-full rounded-lg border border-zinc-800 bg-zinc-900 p-4 lg:w-[420px] lg:overflow-auto">
           <h1 className="text-xl font-semibold">Narrative Graph Tester</h1>
           <p className="mt-2 text-sm text-zinc-400">
@@ -572,14 +688,6 @@ export default function Home() {
             </div>
           ) : null}
 
-          <GraphDiagnostics
-            requestId={requestId}
-            eventsCount={events.length}
-            nodesCount={graph.nodes.length}
-            edgesCount={graph.edges.length}
-            meta={graph.meta}
-          />
-
           {showLargeGraphWarning ? (
             <p className="mt-3 text-sm text-amber-400">
               {graphMode === "timeline"
@@ -626,6 +734,26 @@ export default function Home() {
             </ReactFlow>
           )}
         </section>
+
+        <aside className="w-full rounded-lg border border-zinc-800 bg-zinc-900 p-4 lg:w-[420px] lg:overflow-auto">
+          <h2 className="text-lg font-semibold">Diagnostics</h2>
+          <p className="mt-1 text-xs text-zinc-400">
+            Structural story checks linked to graph nodes and edges.
+          </p>
+          <div className="mt-3">
+            <GraphDiagnostics
+              requestId={requestId}
+              eventsCount={events.length}
+              nodesCount={graph.nodes.length}
+              edgesCount={graph.edges.length}
+              meta={graph.meta}
+              severityFilter={severityFilter}
+              categoryFilter={categoryFilter}
+              onSeverityFilterChange={setSeverityFilter}
+              onCategoryFilterChange={setCategoryFilter}
+            />
+          </div>
+        </aside>
       </div>
     </main>
   );

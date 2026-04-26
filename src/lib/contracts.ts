@@ -15,6 +15,68 @@ export const actionTypeValues = [
 
 export const actionTypeSchema = z.enum(actionTypeValues);
 
+export const diagnosticSeverityValues = ["error", "warning"] as const;
+export const diagnosticSeveritySchema = z.enum(diagnosticSeverityValues);
+
+export const diagnosticCategoryValues = [
+  "timeline",
+  "causality",
+  "character_state",
+  "spatial",
+  "redundancy",
+  "missing_links",
+  "contradiction",
+  "relationship",
+  "goal_motivation",
+  "unresolved_threads",
+  "knowledge",
+  "behavior_tone",
+  "world_rules",
+  "dependency",
+] as const;
+export const diagnosticCategorySchema = z.enum(diagnosticCategoryValues);
+
+export const diagnosticSubtypeValues = [
+  "event_order_violation",
+  "simultaneity_conflict",
+  "duration_inconsistency",
+  "missing_temporal_edge",
+  "missing_cause",
+  "broken_chain",
+  "circular_causality",
+  "life_death_inconsistency",
+  "location_transition_missing",
+  "travel_time_violation",
+  "location_overlap_conflict",
+  "duplicate_event",
+  "narrative_loop",
+  "missing_interaction",
+  "abrupt_transition",
+  "dependency_reversed",
+] as const;
+export const diagnosticSubtypeSchema = z.enum(diagnosticSubtypeValues);
+
+export const graphDiagnosticSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    category: diagnosticCategorySchema,
+    subtype: diagnosticSubtypeSchema,
+    severity: diagnosticSeveritySchema,
+    message: z.string().trim().min(1),
+    confidence: z.number().min(0).max(1).optional(),
+    nodeIds: z.array(z.string().trim().min(1)).optional(),
+    edgeIds: z.array(z.string().trim().min(1)).optional(),
+    evidence: z
+      .object({
+        eventIds: z.array(z.string().trim().min(1)).optional(),
+        entityIds: z.array(z.string().trim().min(1)).optional(),
+        notes: z.array(z.string().trim().min(1)).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 export const extractEventsRequestSchema = z
   .object({
     story: z.string().trim().min(1),
@@ -85,6 +147,10 @@ export const errorResponseSchema = z
   .strict();
 
 export type ActionType = z.infer<typeof actionTypeSchema>;
+export type DiagnosticSeverity = z.infer<typeof diagnosticSeveritySchema>;
+export type DiagnosticCategory = z.infer<typeof diagnosticCategorySchema>;
+export type DiagnosticSubtype = z.infer<typeof diagnosticSubtypeSchema>;
+export type GraphDiagnostic = z.infer<typeof graphDiagnosticSchema>;
 export type Event = z.infer<typeof eventSchema>;
 export type ExtractEventsRequest = z.infer<typeof extractEventsRequestSchema>;
 export type ExtractEventsResponse = z.infer<typeof extractEventsResponseSchema>;

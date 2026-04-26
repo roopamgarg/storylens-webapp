@@ -15,6 +15,7 @@ describe("resolveGraphRenderState", () => {
 
   it("uses densityStatus in character mode", () => {
     const baseMeta: GraphTransformMeta = {
+      diagnosticsSchemaVersion: 1,
       mode: "character",
       characterEdgeStyle: "cooccurrence",
       relationEdgeCount: 10,
@@ -22,6 +23,14 @@ describe("resolveGraphRenderState", () => {
       densityStatus: "warn",
       thresholds: { warn: 5, block: 15 },
       droppedEventCount: 0,
+      diagnostics: [],
+      diagnosticsSummary: { total: 0, errors: 0, warnings: 0 },
+      diagnosticsObservability: {
+        runDurationMs: 0,
+        perRuleHitCount: {},
+        degradedModeCount: 0,
+      },
+      ruleReadiness: [],
     };
 
     const warningState = resolveGraphRenderState("character", 999, baseMeta);
