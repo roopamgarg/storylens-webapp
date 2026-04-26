@@ -36,7 +36,7 @@ type UiError = {
 };
 
 type PreviewStats = ResolverResult["stats"] & {
-  skipReason?: ResolverResult["skipReason"];
+  skipReason?: ResolverResult["skipReason"] | null;
 };
 
 export type GraphRenderState = {
@@ -319,7 +319,7 @@ export default function Home() {
       });
 
       setResolvedPreview(result.resolvedStory);
-      setResolverPreviewStats({ ...result.stats, skipReason: result.skipReason });
+      setResolverPreviewStats({ ...result.stats, skipReason: result.skipReason ?? null });
       setResolverPreviewMessage(null);
     } catch {
       setResolvedPreview(normalizedStory);
@@ -531,7 +531,12 @@ export default function Home() {
                   <p>pronounsFound: {resolverPreviewStats?.pronounsFound ?? 0}</p>
                   <p>pronounsResolved: {resolverPreviewStats?.pronounsResolved ?? 0}</p>
                   <p>pronounsSkipped: {resolverPreviewStats?.pronounsSkipped ?? 0}</p>
-                  <p>skipReason: {resolverPreviewStats?.skipReason ?? "n/a"}</p>
+                  <p>
+                    skipReason:{" "}
+                    {resolverPreviewStats
+                      ? (resolverPreviewStats.skipReason ?? "null")
+                      : "n/a"}
+                  </p>
                 </div>
               </div>
             </div>

@@ -117,8 +117,53 @@ describe("resolvePronouns", () => {
     const input = "Alex said he was ready. Alex then told her to hurry. They waited.";
     const result = await resolvePronouns(input);
 
-    expect(result.resolvedStory).toBe("Alex said Alex was ready. Alex then told Alex to hurry. Alex waited.");
-    expect(result.stats.pronounsResolved).toBeGreaterThanOrEqual(3);
+    expect(result.resolvedStory).toBe("Alex said Alex was ready. Alex then told her to hurry. Alex waited.");
+    expect(result.stats.pronounsResolved).toBeGreaterThanOrEqual(2);
+  });
+
+  it("object pronoun with local subject resolves to prior sentence candidate", async () => {
+    const input = "Adam was a good person. Tom killed him.";
+    const result = await resolvePronouns(input);
+
+    expect(result.resolvedStory).toBe("Adam was a good person. Tom killed Adam.");
+  });
+
+  it("object pronoun resolves to prior candidate when current sentence names another person", async () => {
+    const input = "Tom warned Adam. Adam ignored him.";
+    const result = await resolvePronouns(input);
+
+    expect(result.resolvedStory).toBe("Tom warned Adam. Adam ignored Tom.");
+  });
+
+  it("standalone object pronoun with only same-sentence candidate skips", async () => {
+    const input = "Tom killed him.";
+    const result = await resolvePronouns(input);
+
+    expect(result.resolvedStory).toBe(input);
+    expect(result.stats.pronounsSkipped).toBeGreaterThanOrEqual(1);
+  });
+
+  it("object pronoun with multiple prior candidates after filtering skips", async () => {
+    const input = "Adam met Tom. Chris saw him.";
+    const result = await resolvePronouns(input);
+
+    expect(result.resolvedStory).toBe(input);
+    expect(result.stats.pronounsSkipped).toBeGreaterThanOrEqual(1);
+  });
+
+  it("mixed possessive and object her only resolves object usage", async () => {
+    const input = "Aria tightened her grip. The light struck her.";
+    const result = await resolvePronouns(input);
+
+    expect(result.resolvedStory).toBe("Aria tightened her grip. The light struck Aria.");
+  });
+
+  it("hint regression guard keeps ambiguous her unresolved", async () => {
+    const input = "Adam was brave. Eve liked him. The crowd cheered her.";
+    const result = await resolvePronouns(input);
+
+    expect(result.resolvedStory).toBe("Adam was brave. Eve liked Adam. The crowd cheered her.");
+    expect(result.stats.pronounsSkipped).toBeGreaterThanOrEqual(1);
   });
 
   it("length skip", async () => {
@@ -203,7 +248,7 @@ describe("resolvePronouns", () => {
     const mockedModule = await import("@/lib/pronoun-resolver");
     const result = await mockedModule.resolvePronouns("Aria tightened her grip.");
 
-    expect(result.resolvedStory).toBe("Aria tightened Aria grip.");
+    expect(result.resolvedStory).toBe("Aria tightened her grip.");
 
     vi.doUnmock("wink-nlp");
     vi.resetModules();

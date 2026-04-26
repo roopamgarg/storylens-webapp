@@ -23,6 +23,7 @@ type ResolvePronounsOptions = {
 
 type GenderHint = "masc" | "fem" | "neutral" | "unknown";
 type PronounClass = "masc" | "fem" | "neutral";
+type PronounRole = "subject" | "object";
 
 type TokenData = {
   text: string;
@@ -42,6 +43,7 @@ type PersonMention = {
 
 type TrackedPronoun = {
   className: PronounClass;
+  role: PronounRole;
   pronoun: string;
 };
 
@@ -108,22 +110,51 @@ function isPossessiveHer(tokens: TokenData[], index: number): boolean {
 function getTrackedPronoun(tokens: TokenData[], index: number): TrackedPronoun | null {
   const token = tokens[index];
   if (token.lower === "he" || token.lower === "him") {
-    return { className: "masc", pronoun: token.text };
+    return {
+      className: "masc",
+      role: token.lower === "he" ? "subject" : "object",
+      pronoun: token.text,
+    };
   }
   if (token.lower === "she") {
-    return { className: "fem", pronoun: token.text };
+    return { className: "fem", role: "subject", pronoun: token.text };
   }
   if (token.lower === "her") {
     if (isPossessiveHer(tokens, index)) {
       return null;
     }
-    return { className: "fem", pronoun: token.text };
+    return { className: "fem", role: "object", pronoun: token.text };
   }
   if (token.lower === "they" || token.lower === "them") {
-    return { className: "neutral", pronoun: token.text };
+    return {
+      className: "neutral",
+      role: token.lower === "they" ? "subject" : "object",
+      pronoun: token.text,
+    };
   }
 
   return null;
+}
+
+function filterObjectPronounCandidates(
+  distinct: Map<string, PersonMention[]>,
+  pronounSentenceIndex: number,
+  pronounTokenIndex: number,
+): Map<string, PersonMention[]> {
+  const filtered = new Map<string, PersonMention[]>();
+
+  distinct.forEach((mentions, normalizedName) => {
+    const hasSameSentenceMentionBeforePronoun = mentions.some(
+      (mention) =>
+        mention.sentenceIndex === pronounSentenceIndex && mention.tokenIndex < pronounTokenIndex,
+    );
+
+    if (!hasSameSentenceMentionBeforePronoun) {
+      filtered.set(normalizedName, mentions);
+    }
+  });
+
+  return filtered;
 }
 
 function buildTokenMatrix(nlp: WinkMethods, story: string): TokenData[][] {
@@ -327,12 +358,17 @@ export async function resolvePronouns(
           distinct.set(mention.normalized, existing);
         });
 
-        if (distinct.size !== 1) {
+        const filteredDistinct =
+          trackedPronoun.role === "object"
+            ? filterObjectPronounCandidates(distinct, sentenceIndex, tokenIndex)
+            : distinct;
+
+        if (filteredDistinct.size !== 1) {
           pronounsSkipped += 1;
           return;
         }
 
-        const [normalizedName, mentionsForName] = Array.from(distinct.entries())[0];
+        const [normalizedName, mentionsForName] = Array.from(filteredDistinct.entries())[0];
         const hint = globalHints.get(normalizedName) ?? "unknown";
         if (!canResolvePronoun(trackedPronoun.className, hint)) {
           pronounsSkipped += 1;

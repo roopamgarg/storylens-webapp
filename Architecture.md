@@ -101,8 +101,11 @@ flowchart LR
 - Algorithm:
   1. Build PERSON-like mention candidates from proper-noun spans.
   2. Build global gender-hint map using same-sentence, single-entity attribution.
-  3. Resolve tracked pronouns in a 3-sentence lookback window when crowding gate has exactly one candidate.
-  4. Apply agreement checks with single-candidate `unknown` carve-out.
+  3. Resolve tracked pronouns in a 3-sentence lookback window with role-aware handling:
+     - subject pronouns (`he`, `she`, `they`): keep existing crowding behavior (resolve only when exactly one distinct candidate exists).
+     - object pronouns (`him`, object `her`, `them`): exclude any candidate entity that appears as a proper-name mention earlier in the pronoun sentence, then apply the same crowding gate.
+  4. Apply agreement checks only after the crowding gate passes, including single-candidate `unknown` carve-out.
+  5. Ambiguous outcomes (`0` or `>1` candidates after filtering) are skipped rather than guessed.
 
 ## Logging Schema
 
