@@ -58,6 +58,11 @@ body {
 
 .ui-shell button {
   border-radius: 0.3rem !important;
+  cursor: pointer;
+}
+
+.ui-shell button:disabled {
+  cursor: not-allowed;
 }
 
 .ui-shell .border-white\/10,
