@@ -61,6 +61,33 @@ describe("transformEventsToGraph", () => {
     ).toBe(true);
   });
 
+  it("adds start and end boundary nodes for story flow", () => {
+    const result = transformEventsToGraph([baseEvent]);
+
+    expect(result.nodes.some((node) => node.id === "story:start" && node.data.kind === "boundary")).toBe(
+      true,
+    );
+    expect(result.nodes.some((node) => node.id === "story:end" && node.data.kind === "boundary")).toBe(
+      true,
+    );
+
+    expect(
+      result.edges.some(
+        (edge) =>
+          edge.id ===
+          "story_boundary:story:start->11111111-1111-4111-8111-111111111111",
+      ),
+    ).toBe(true);
+
+    expect(
+      result.edges.some(
+        (edge) =>
+          edge.id ===
+          "story_boundary:11111111-1111-4111-8111-111111111111->story:end",
+      ),
+    ).toBe(true);
+  });
+
   it("returns empty graph for empty events input", () => {
     const result = transformEventsToGraph([]);
     expect(result.nodes).toEqual([]);

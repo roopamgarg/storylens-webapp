@@ -24,11 +24,16 @@ import {
   type GraphEdgeData,
   type GraphNodeData,
 } from "@/lib/graph-transform";
+import type { ResolverResult } from "@/lib/pronoun-resolver";
 
 type UiError = {
   code: ErrorCode | "NETWORK_ERROR";
   message: string;
   requestId?: string;
+};
+
+type PreviewStats = ResolverResult["stats"] & {
+  skipReason?: ResolverResult["skipReason"];
 };
 
 const sampleStory = `Aria enters the old fortress and lights a torch.
@@ -68,9 +73,16 @@ export default function Home() {
   const [includeSequenceEdges, setIncludeSequenceEdges] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [activeStoryFingerprint, setActiveStoryFingerprint] = useState<string | null>(null);
+  const [showResolverDebug, setShowResolverDebug] = useState(false);
+  const [resolvedPreview, setResolvedPreview] = useState<string | null>(null);
+  const [resolverPreviewStats, setResolverPreviewStats] = useState<PreviewStats | null>(null);
+  const [resolverPreviewMessage, setResolverPreviewMessage] = useState<string | null>(null);
+  const [resolvingPreview, setResolvingPreview] = useState(false);
+  const allowResolverDebug = process.env.NODE_ENV !== "production";
 
   const timerRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const resolverModuleRef = useRef<Promise<typeof import("@/lib/pronoun-resolver")> | null>(null);
 
   const graph = useMemo(() => {
     const transformed = transformEventsToGraph(events, { includeSequenceEdges });
@@ -103,6 +115,61 @@ export default function Home() {
 
   const cancelCurrentRequest = () => {
     abortRef.current?.abort();
+  };
+
+  const loadResolverModule = async () => {
+    if (!resolverModuleRef.current) {
+      resolverModuleRef.current = import("@/lib/pronoun-resolver");
+    }
+
+    return resolverModuleRef.current;
+  };
+
+  const onGeneratePreview = async () => {
+    const normalizedStory = story.trim();
+    if (!normalizedStory) {
+      setResolverPreviewMessage("Preview unavailable: story is empty.");
+      setResolvedPreview(null);
+      setResolverPreviewStats(null);
+      return;
+    }
+
+    if (normalizedStory.length > appLimits.pronounPreviewMaxChars) {
+      setResolverPreviewMessage("Preview skipped: input too long.");
+      setResolvedPreview(normalizedStory);
+      setResolverPreviewStats({
+        pronounsFound: 0,
+        pronounsResolved: 0,
+        pronounsSkipped: 0,
+        skipReason: "input_too_long",
+      });
+      return;
+    }
+
+    setResolvingPreview(true);
+    setResolverPreviewMessage(null);
+
+    try {
+      const resolverModule = await loadResolverModule();
+      const result = await resolverModule.resolvePronouns(normalizedStory, {
+        maxChars: appLimits.pronounPreviewMaxChars,
+      });
+
+      setResolvedPreview(result.resolvedStory);
+      setResolverPreviewStats({ ...result.stats, skipReason: result.skipReason });
+      setResolverPreviewMessage(null);
+    } catch {
+      setResolvedPreview(normalizedStory);
+      setResolverPreviewStats({
+        pronounsFound: 0,
+        pronounsResolved: 0,
+        pronounsSkipped: 0,
+        skipReason: "model_failure",
+      });
+      setResolverPreviewMessage("Preview unavailable.");
+    } finally {
+      setResolvingPreview(false);
+    }
   };
 
   const onSubmit = async (submitEvent: React.FormEvent<HTMLFormElement>) => {
@@ -253,7 +320,67 @@ export default function Home() {
               />
               Include sequence edges
             </label>
+
+            {allowResolverDebug ? (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={showResolverDebug}
+                  onChange={(event) => setShowResolverDebug(event.target.checked)}
+                />
+                Debug: Pronoun resolver preview
+              </label>
+            ) : null}
           </form>
+
+          {allowResolverDebug && showResolverDebug ? (
+            <div className="mt-4 rounded border border-zinc-800 bg-zinc-950 p-3 text-sm">
+              <p className="text-xs uppercase tracking-wide text-zinc-400">Preview only</p>
+              <p className="mt-1 text-zinc-300">
+                This preview does not change the extract request payload in Phase 1.
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onGeneratePreview}
+                  disabled={resolvingPreview}
+                  className="rounded border border-zinc-700 px-3 py-1 text-xs disabled:opacity-50"
+                >
+                  {resolvingPreview ? "Generating preview..." : "Generate Preview"}
+                </button>
+                <span className="text-xs text-zinc-500">
+                  max {appLimits.pronounPreviewMaxChars.toLocaleString()} chars
+                </span>
+              </div>
+
+              {resolverPreviewMessage ? (
+                <p className="mt-2 text-xs text-amber-300">{resolverPreviewMessage}</p>
+              ) : null}
+
+              <div className="mt-3 grid gap-2">
+                <div>
+                  <p className="text-xs text-zinc-500">Original story</p>
+                  <pre className="mt-1 max-h-32 overflow-auto rounded bg-black p-2 text-xs text-zinc-300">
+                    {story.trim() || "n/a"}
+                  </pre>
+                </div>
+
+                <div>
+                  <p className="text-xs text-zinc-500">Resolved preview story</p>
+                  <pre className="mt-1 max-h-32 overflow-auto rounded bg-black p-2 text-xs text-zinc-300">
+                    {resolvedPreview ?? "Run Generate Preview"}
+                  </pre>
+                </div>
+
+                <div className="rounded border border-zinc-800 bg-zinc-900 p-2 text-xs">
+                  <p>pronounsFound: {resolverPreviewStats?.pronounsFound ?? 0}</p>
+                  <p>pronounsResolved: {resolverPreviewStats?.pronounsResolved ?? 0}</p>
+                  <p>pronounsSkipped: {resolverPreviewStats?.pronounsSkipped ?? 0}</p>
+                  <p>skipReason: {resolverPreviewStats?.skipReason ?? "n/a"}</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {error ? (
             <div className="mt-4 rounded border border-red-700 bg-red-950/40 p-3 text-sm">
@@ -285,8 +412,8 @@ export default function Home() {
           ) : null}
           {blockGraphRender ? (
             <p className="mt-2 text-sm text-amber-300">
-              Graph rendering disabled above {appLimits.largeGraphBlockEvents} events. Reduce input
-              or improve extraction granularity.
+              Graph rendering disabled above {appLimits.largeGraphBlockEvents} events. Reduce input or
+              improve extraction granularity.
             </p>
           ) : null}
 

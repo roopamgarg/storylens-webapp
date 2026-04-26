@@ -2,8 +2,12 @@ import type { Edge, Node } from "@xyflow/react";
 
 import type { Event } from "@/lib/contracts";
 
-export type GraphNodeKind = "event" | "entity";
-export type GraphEdgeKind = "actor_to_event" | "event_to_target" | "event_sequence";
+export type GraphNodeKind = "event" | "entity" | "boundary";
+export type GraphEdgeKind =
+  | "actor_to_event"
+  | "event_to_target"
+  | "event_sequence"
+  | "story_boundary";
 
 export type GraphNodeData = {
   label: string;
@@ -25,6 +29,9 @@ export type GraphTransformResult = {
   edges: Edge<GraphEdgeData>[];
 };
 
+const STORY_START_NODE_ID = "story:start";
+const STORY_END_NODE_ID = "story:end";
+
 function normalizeEntityName(input: string): string {
   return input.trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -35,6 +42,52 @@ function toEntityNodeId(rawEntityName: string): string {
 
 function makeEdgeId(kind: GraphEdgeKind, source: string, target: string): string {
   return `${kind}:${source}->${target}`;
+}
+
+function addBoundaryNodes(nodeById: Map<string, Node<GraphNodeData>>): void {
+  nodeById.set(STORY_START_NODE_ID, {
+    id: STORY_START_NODE_ID,
+    type: "default",
+    position: { x: 0, y: 0 },
+    style: {
+      width: 140,
+      borderRadius: 9999,
+      border: "1px solid #3b82f6",
+      background: "#172554",
+      color: "#dbeafe",
+      padding: 10,
+      fontSize: 12,
+      lineHeight: 1.3,
+      textAlign: "center",
+    },
+    data: {
+      kind: "boundary",
+      label: "Start",
+      detail: "Story starts here",
+    },
+  });
+
+  nodeById.set(STORY_END_NODE_ID, {
+    id: STORY_END_NODE_ID,
+    type: "default",
+    position: { x: 0, y: 0 },
+    style: {
+      width: 140,
+      borderRadius: 9999,
+      border: "1px solid #7c3aed",
+      background: "#2e1065",
+      color: "#ede9fe",
+      padding: 10,
+      fontSize: 12,
+      lineHeight: 1.3,
+      textAlign: "center",
+    },
+    data: {
+      kind: "boundary",
+      label: "End",
+      detail: "Story ends here",
+    },
+  });
 }
 
 export function transformEventsToGraph(
@@ -157,6 +210,35 @@ export function transformEventsToGraph(
       }
     }
   });
+
+  if (events.length > 0) {
+    addBoundaryNodes(nodeById);
+
+    const firstEventId = events[0].eventId;
+    const lastEventId = events[events.length - 1].eventId;
+
+    const startEdgeId = makeEdgeId("story_boundary", STORY_START_NODE_ID, firstEventId);
+    edgeById.set(startEdgeId, {
+      id: startEdgeId,
+      source: STORY_START_NODE_ID,
+      target: firstEventId,
+      type: "straight",
+      animated: false,
+      data: { kind: "story_boundary" },
+      label: "begin",
+    });
+
+    const endEdgeId = makeEdgeId("story_boundary", lastEventId, STORY_END_NODE_ID);
+    edgeById.set(endEdgeId, {
+      id: endEdgeId,
+      source: lastEventId,
+      target: STORY_END_NODE_ID,
+      type: "straight",
+      animated: false,
+      data: { kind: "story_boundary" },
+      label: "end",
+    });
+  }
 
   if (includeSequenceEdges) {
     for (let index = 0; index < events.length - 1; index += 1) {

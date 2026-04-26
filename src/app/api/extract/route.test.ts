@@ -29,6 +29,9 @@ describe("POST /api/extract proxy route", () => {
     vi.stubEnv("LLM_LAYER_BASE_URL", "http://localhost:3000");
     vi.stubEnv("REQUEST_TIMEOUT_MS", "95000");
     vi.stubEnv("LLM_LAYER_API_KEY", "local-test-key");
+    vi.stubEnv("PRONOUN_RESOLVER_MAX_CHARS", "10000");
+    vi.stubEnv("NEXT_PUBLIC_PRONOUN_RESOLVER_MAX_CHARS", "10000");
+    vi.stubEnv("ENABLE_PRONOUN_RESOLUTION", "false");
   });
 
   afterEach(() => {
@@ -90,7 +93,7 @@ describe("POST /api/extract proxy route", () => {
   });
 
   it("returns validated success payload", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify(validSuccessResponse), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -110,5 +113,82 @@ describe("POST /api/extract proxy route", () => {
     expect(response.status).toBe(200);
     expect(body.events).toHaveLength(1);
     expect(body.requestId).toBe(validSuccessResponse.requestId);
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify(validRequest));
+  });
+
+  it("keeps upstream body unchanged when resolver flag is on", async () => {
+    vi.stubEnv("ENABLE_PRONOUN_RESOLUTION", "true");
+    const resolvePronounsMock = vi.fn().mockResolvedValue({
+      resolvedStory: "Aria discovers a hidden map.",
+      stats: { pronounsFound: 1, pronounsResolved: 1, pronounsSkipped: 0 },
+      applied: [
+        {
+          pronoun: "She",
+          position: { sentenceIndex: 1, tokenIndex: 0 },
+          replacement: "Aria",
+          confidence: "high",
+        },
+      ],
+    });
+
+    vi.doMock("@/lib/pronoun-resolver", () => ({
+      resolvePronouns: resolvePronounsMock,
+    }));
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(validSuccessResponse), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const { POST } = await importRoute();
+    const response = await POST(
+      new Request("http://localhost/api/extract", {
+        method: "POST",
+        body: JSON.stringify(validRequest),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(resolvePronounsMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify(validRequest));
+    expect(logSpy).toHaveBeenCalledTimes(1);
+
+    const loggedJson = JSON.parse(String(logSpy.mock.calls[0]?.[0] ?? "{}"));
+    expect(loggedJson.event).toBe("pronoun_resolver");
+    expect(loggedJson.pronounsResolved).toBe(1);
+
+    vi.doUnmock("@/lib/pronoun-resolver");
+  });
+
+  it("logs skip when story exceeds resolver cap", async () => {
+    vi.stubEnv("ENABLE_PRONOUN_RESOLUTION", "true");
+    vi.stubEnv("PRONOUN_RESOLVER_MAX_CHARS", "10");
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(validSuccessResponse), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const { POST } = await importRoute();
+    const response = await POST(
+      new Request("http://localhost/api/extract", {
+        method: "POST",
+        body: JSON.stringify({ story: "This story is definitely longer than ten characters." }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const loggedJson = JSON.parse(String(logSpy.mock.calls[0]?.[0] ?? "{}"));
+    expect(loggedJson.skipReason).toBe("input_too_long");
+    expect(loggedJson.event).toBe("pronoun_resolver");
   });
 });

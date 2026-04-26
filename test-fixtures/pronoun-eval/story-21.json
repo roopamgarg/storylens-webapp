@@ -1,0 +1,18 @@
+{
+  "story": "Aria reached checkpoint 21. She signaled Borin. They moved toward the ridge.",
+  "mentions": [
+    {
+      "sentenceIndex": 1,
+      "tokenIndex": 0,
+      "pronoun": "She",
+      "expectedAction": "resolve",
+      "expectedReplacement": "Aria"
+    },
+    {
+      "sentenceIndex": 2,
+      "tokenIndex": 0,
+      "pronoun": "They",
+      "expectedAction": "skip"
+    }
+  ]
+}

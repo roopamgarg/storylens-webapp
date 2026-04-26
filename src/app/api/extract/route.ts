@@ -10,6 +10,9 @@ import {
 } from "@/lib/contracts";
 import { appLimits } from "@/lib/constants";
 import { serverEnv } from "@/lib/env";
+import { resolvePronouns } from "@/lib/pronoun-resolver";
+
+export const runtime = "nodejs";
 
 let inFlightRequests = 0;
 
@@ -39,6 +42,8 @@ function parseErrorPayload(raw: unknown): ApiErrorBody | undefined {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const requestId = randomUUID();
+
   if (inFlightRequests >= appLimits.maxConcurrentRequests) {
     return jsonResponse(
       makeErrorBody(
@@ -67,6 +72,55 @@ export async function POST(request: Request): Promise<Response> {
       }),
       400,
     );
+  }
+
+  if (serverEnv.enablePronounResolution) {
+    const storyLengthChars = requestParseResult.data.story.length;
+    const start = Date.now();
+
+    if (storyLengthChars > serverEnv.pronounResolverMaxChars) {
+      console.log(
+        JSON.stringify({
+          event: "pronoun_resolver",
+          requestId,
+          pronounsFound: 0,
+          pronounsResolved: 0,
+          pronounsSkipped: 0,
+          skipReason: "input_too_long",
+          storyLengthChars,
+          durationMs: 0,
+        }),
+      );
+    } else {
+      try {
+        const resolved = await resolvePronouns(requestParseResult.data.story, {
+          maxChars: serverEnv.pronounResolverMaxChars,
+        });
+
+        console.log(
+          JSON.stringify({
+            event: "pronoun_resolver",
+            requestId,
+            pronounsFound: resolved.stats.pronounsFound,
+            pronounsResolved: resolved.stats.pronounsResolved,
+            pronounsSkipped: resolved.stats.pronounsSkipped,
+            skipReason: resolved.skipReason ?? null,
+            storyLengthChars,
+            durationMs: Date.now() - start,
+          }),
+        );
+      } catch (error) {
+        console.log(
+          JSON.stringify({
+            event: "pronoun_resolver_error",
+            requestId,
+            storyLengthChars,
+            durationMs: Date.now() - start,
+            message: error instanceof Error ? error.message : "unknown",
+          }),
+        );
+      }
+    }
   }
 
   const upstreamController = new AbortController();
