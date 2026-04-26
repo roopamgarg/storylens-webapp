@@ -40,7 +40,7 @@ Aria defends Borin and the beast retreats into the dark.`;
 
 const panelWidths = {
   left: { default: 360, min: 280, max: 480, collapse: 220 },
-  right: { default: 400, min: 320, max: 560, collapse: 240 },
+  right: { default: 340, min: 300, max: 520, collapse: 220 },
   rail: 44,
 };
 

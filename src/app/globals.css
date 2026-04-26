@@ -65,6 +65,10 @@ body {
   cursor: not-allowed;
 }
 
+.ui-shell button[aria-label^="Resize"] {
+  cursor: col-resize !important;
+}
+
 .ui-shell .border-white\/10,
 .ui-shell .border-white\/15 {
   border-color: var(--ub-border) !important;
