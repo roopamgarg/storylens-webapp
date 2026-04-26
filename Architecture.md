@@ -138,6 +138,12 @@ The graph pipeline now includes a deterministic diagnostics stage that classifie
     - left: story input/control panel
     - center: graph canvas
     - right: diagnostics panel
+  - Orchestrates client state and request lifecycle; structural rendering is delegated to:
+    - `src/app/components/story-checker/MainHeader.tsx`
+    - `src/app/components/story-checker/LeftControlPanel.tsx`
+    - `src/app/components/story-checker/GraphPanel.tsx`
+    - `src/app/components/story-checker/RightDiagnosticsPanel.tsx`
+    - shared widgets in `src/app/components/story-checker/GraphControls.tsx`, `DiagnosticsWidgets.tsx`, and `TopMetric.tsx`
   - Diagnostics panel supports severity/category filters and incident list.
   - On smaller breakpoints, diagnostics panel shifts below the graph.
 

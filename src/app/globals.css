@@ -1,29 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: light;
-  --ub-bg: #0a0f1a;
-  --ub-surface: #111826;
-  --ub-surface-elevated: #171f2f;
-  --ub-border: #263247;
-  --ub-text: #e5ecf8;
-  --ub-text-muted: #8f9cb1;
-  --ub-accent: #3b82f6;
-  --ub-accent-soft: #1d2a43;
-  --background: var(--ub-bg);
-  --foreground: var(--ub-text);
-}
-
-:root[data-theme="dark"] {
   color-scheme: dark;
   --ub-bg: #0a0f1a;
-  --ub-surface: #111826;
-  --ub-surface-elevated: #171f2f;
-  --ub-border: #263247;
-  --ub-text: #e5ecf8;
-  --ub-text-muted: #8f9cb1;
-  --ub-accent: #3b82f6;
-  --ub-accent-soft: #1d2a43;
+  --ub-surface: #1f1f1f;
+  --ub-surface-elevated: #252525;
+  --ub-border: #343434;
+  --ub-text: #e6e6e6;
+  --ub-text-muted: #a3a3a3;
+  --ub-accent: #4f8cff;
+  --ub-accent-soft: #2a2a2a;
   --background: var(--ub-bg);
   --foreground: var(--ub-text);
 }
@@ -33,22 +19,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    color-scheme: dark;
-    --ub-bg: #0a0f1a;
-    --ub-surface: #111826;
-    --ub-surface-elevated: #171f2f;
-    --ub-border: #263247;
-    --ub-text: #e5ecf8;
-    --ub-text-muted: #8f9cb1;
-    --ub-accent: #3b82f6;
-    --ub-accent-soft: #1d2a43;
-    --background: var(--ub-bg);
-    --foreground: var(--ub-text);
-  }
 }
 
 body {
@@ -67,27 +37,27 @@ body {
 
 .ui-shell {
   background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 38%),
-    radial-gradient(circle at top right, rgba(14, 165, 233, 0.12), transparent 38%),
-    linear-gradient(180deg, #090f1b 0%, #070d18 60%, #060b14 100%);
-}
-
-.theme-toggle {
-  border: 1px solid var(--ub-border);
-  background: var(--ub-surface);
-  color: var(--ub-text);
-  border-radius: 0.625rem;
+    radial-gradient(circle at 20% -10%, rgba(255, 255, 255, 0.04), transparent 32%),
+    radial-gradient(circle at 85% 0%, rgba(255, 255, 255, 0.03), transparent 30%),
+    repeating-radial-gradient(
+      circle at 50% 50%,
+      rgba(255, 255, 255, 0.012) 0 1px,
+      transparent 1px 7px
+    ),
+    linear-gradient(180deg, #191919 0%, #171717 60%, #151515 100%);
+  background-size: auto, auto, 5px 5px, auto;
 }
 
 /* Notion-inspired compatibility layer for existing Tailwind classes in page.tsx */
 .ui-shell .rounded-2xl,
 .ui-shell .rounded-xl,
-.ui-shell .rounded-lg {
-  border-radius: 0.7rem;
+.ui-shell .rounded-lg,
+.ui-shell .rounded-full {
+  border-radius: 0.3rem !important;
 }
 
-.ui-shell .rounded-full {
-  border-radius: 9999px !important;
+.ui-shell button {
+  border-radius: 0.3rem !important;
 }
 
 .ui-shell .border-white\/10,
@@ -104,7 +74,7 @@ body {
 .ui-shell .bg-white\/5 {
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--ub-surface-elevated) 96%, black),
+    color-mix(in srgb, var(--ub-surface-elevated) 94%, black),
     color-mix(in srgb, var(--ub-surface) 96%, black)
   ) !important;
 }
@@ -120,36 +90,32 @@ body {
   color: var(--ub-text-muted) !important;
 }
 
-.ui-shell .bg-indigo-600 {
-  background: linear-gradient(180deg, #f8fafc, #e2e8f0) !important;
-}
-
-.ui-shell .text-white {
-  color: #0f172a !important;
-}
-
 .ui-shell .shadow-indigo-900\/50,
 .ui-shell .shadow-\[0_16px_30px_-20px_rgba\(59\,130\,246\,0\.5\)\],
 .ui-shell .shadow-\[0_16px_40px_-30px_rgba\(59\,130\,246\,0\.7\)\] {
   box-shadow: 0 10px 25px rgba(4, 10, 22, 0.45) !important;
 }
 
-:root[data-theme="dark"] .ui-shell .bg-indigo-600 {
+.ui-shell .bg-indigo-600 {
   background: var(--ub-accent) !important;
 }
 
-:root[data-theme="dark"] .ui-shell .bg-red-500\/10 {
+.ui-shell .text-white {
+  color: #ffffff !important;
+}
+
+.ui-shell .bg-red-500\/10 {
   background: rgba(239, 68, 68, 0.15) !important;
 }
 
-:root[data-theme="dark"] .ui-shell .bg-amber-500\/10 {
+.ui-shell .bg-amber-500\/10 {
   background: rgba(245, 158, 11, 0.14) !important;
 }
 
 .react-flow__controls {
   box-shadow: 0 10px 24px rgba(3, 8, 20, 0.52);
   border: 1px solid var(--ub-border);
-  border-radius: 8px;
+  border-radius: 0.3rem;
   overflow: hidden;
   background: var(--ub-surface-elevated);
 }
