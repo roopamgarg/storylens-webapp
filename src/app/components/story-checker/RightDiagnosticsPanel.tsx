@@ -7,7 +7,8 @@ import { GraphDiagnostics } from "./DiagnosticsWidgets";
 type RightDiagnosticsPanelProps = {
   collapsed: boolean;
   railWidth: number;
-  width: number;
+  width: number | string;
+  isMobile: boolean;
   hasCompletedAnalysis: boolean;
   requestId?: string;
   events: Event[];
@@ -23,7 +24,7 @@ type RightDiagnosticsPanelProps = {
 };
 
 export function RightDiagnosticsPanel(props: RightDiagnosticsPanelProps) {
-  if (props.collapsed) {
+  if (props.collapsed && !props.isMobile) {
     return (
       <div
         className="hidden h-full items-center justify-center rounded-2xl border border-white/10 bg-[#0d1425]/90 lg:flex"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Edge, Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -43,6 +43,9 @@ const panelWidths = {
   right: { default: 340, min: 300, max: 520, collapse: 220 },
   rail: 44,
 };
+const desktopBreakpointPx = 1024;
+type MobileSection = "input" | "graph" | "diagnostics";
+const mobileViewportQuery = `(max-width: ${desktopBreakpointPx - 1}px)`;
 
 function mapErrorCodeToMessage(code: ErrorCode): string {
   switch (code) {
@@ -119,6 +122,7 @@ export default function Home() {
     startX: number;
     startWidth: number;
   } | null>(null);
+  const [activeMobileSection, setActiveMobileSection] = useState<MobileSection>("input");
   const allowResolverDebug = process.env.NODE_ENV !== "production";
   const diagnosticsEnabled = process.env.NEXT_PUBLIC_STORY_DIAGNOSTICS_PHASE1_ENABLED !== "false";
 
@@ -339,6 +343,22 @@ export default function Home() {
     return Math.min(Math.max(width, limits.min), limits.max);
   };
 
+  const isMobile = useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof window === "undefined") {
+        return () => {};
+      }
+      const mediaQuery = window.matchMedia(mobileViewportQuery);
+      const listener = () => onStoreChange();
+      mediaQuery.addEventListener("change", listener);
+      return () => {
+        mediaQuery.removeEventListener("change", listener);
+      };
+    },
+    () => (typeof window === "undefined" ? false : window.matchMedia(mobileViewportQuery).matches),
+    () => false,
+  );
+
   useEffect(() => {
     if (!resizeState) {
       return;
@@ -401,6 +421,45 @@ export default function Home() {
     setRightPanelWidth(panelWidths.right.default);
   };
   const rightPanelIsCollapsed = !hasCompletedAnalysis || rightPanelCollapsed;
+  const effectiveMobileSection =
+    !hasCompletedAnalysis && activeMobileSection === "diagnostics" ? "input" : activeMobileSection;
+  const showMobileInput = !isMobile || effectiveMobileSection === "input";
+  const showMobileGraph = !isMobile || effectiveMobileSection === "graph";
+  const showMobileDiagnostics = !isMobile || effectiveMobileSection === "diagnostics";
+  const mobileSectionTabs: Array<{ id: MobileSection; label: string; disabled?: boolean }> = [
+    { id: "input", label: "Input" },
+    { id: "graph", label: "Graph" },
+    { id: "diagnostics", label: "Diagnostics", disabled: !hasCompletedAnalysis },
+  ];
+
+  const onMobileSectionTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const enabledTabs = mobileSectionTabs.filter((tab) => !tab.disabled);
+    const currentIndex = enabledTabs.findIndex((tab) => tab.id === effectiveMobileSection);
+    if (currentIndex < 0) {
+      return;
+    }
+    if (event.key === "ArrowRight") {
+      const next = enabledTabs[(currentIndex + 1) % enabledTabs.length];
+      setActiveMobileSection(next.id);
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      const previous = enabledTabs[(currentIndex - 1 + enabledTabs.length) % enabledTabs.length];
+      setActiveMobileSection(previous.id);
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "Home") {
+      setActiveMobileSection(enabledTabs[0].id);
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "End") {
+      setActiveMobileSection(enabledTabs[enabledTabs.length - 1].id);
+      event.preventDefault();
+    }
+  };
 
   useEffect(() => {
     if (!previousHasCompletedAnalysisRef.current && hasCompletedAnalysis) {
@@ -422,9 +481,43 @@ export default function Home() {
           issuesWarnings={issuesWarnings}
         />
 
+        {isMobile ? (
+          <div className="rounded-xl border border-white/10 bg-[#0d1425]/90 p-1.5">
+            <div
+              role="tablist"
+              aria-label="Mobile sections"
+              className="grid grid-cols-3 gap-1"
+              onKeyDown={onMobileSectionTabKeyDown}
+            >
+              {mobileSectionTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  id={`${tab.id}-tab`}
+                  aria-controls={`${tab.id}-panel`}
+                  aria-selected={effectiveMobileSection === tab.id}
+                  disabled={tab.disabled}
+                  onClick={() => setActiveMobileSection(tab.id)}
+                  className={`rounded-lg border px-3 py-2 text-xs font-medium ${
+                    effectiveMobileSection === tab.id
+                      ? "border-[#d7dce6] bg-[#f5f8ff] text-[#0f172a]"
+                      : "border-white/15 bg-white/5 text-zinc-200"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            {!hasCompletedAnalysis ? (
+              <p className="mt-2 text-xs text-zinc-400">Run analysis to enable Diagnostics.</p>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="grid gap-3 lg:h-[calc(100%-96px)] lg:grid-cols-1 lg:overflow-hidden">
-          <div className="flex h-full gap-2 overflow-hidden">
-            {leftPanelCollapsed ? (
+          <div className="flex h-full flex-col gap-2 overflow-visible lg:flex-row lg:overflow-hidden">
+            {leftPanelCollapsed && !isMobile ? (
               <div
                 className="hidden h-full items-center justify-center rounded-2xl border border-white/10 bg-[#0d1425]/90 lg:flex"
                 style={{ width: panelWidths.rail }}
@@ -448,50 +541,58 @@ export default function Home() {
                 </button>
               </div>
             ) : (
-              <LeftControlPanel
-                width={leftPanelWidth}
-                story={story}
-                loading={loading}
-                elapsedLabel={formatElapsedMs(elapsedMs)}
-                graphMode={graphMode}
-                characterEdgeStyle={characterEdgeStyle}
-                includeSequenceEdges={includeSequenceEdges}
-                usePronounResolver={usePronounResolver}
-                showResolverDebug={showResolverDebug}
-                resolvingPreview={resolvingPreview}
-                resolvedPreview={resolvedPreview}
-                resolverPreviewStats={resolverPreviewStats}
-                resolverPreviewMessage={resolverPreviewMessage}
-                allowResolverDebug={allowResolverDebug}
-                error={error}
-                showLargeGraphWarning={showLargeGraphWarning}
-                blockGraphRender={blockGraphRender}
-                eventsCount={events.length}
-                graphEdgesCount={graph.edges.length}
-                issuesTotal={issuesTotal}
-                graphMeta={graph.meta}
-                rawEventsJson={JSON.stringify(events, null, 2)}
-                storySectionCollapsed={storySectionCollapsed}
-                graphSettingsSectionCollapsed={graphSettingsSectionCollapsed}
-                advancedSectionCollapsed={advancedSectionCollapsed}
-                rawEventsSectionCollapsed={rawEventsSectionCollapsed}
-                onToggleStorySection={() => setStorySectionCollapsed((current) => !current)}
-                onToggleGraphSettingsSection={() => setGraphSettingsSectionCollapsed((current) => !current)}
-                onToggleAdvancedSection={() => setAdvancedSectionCollapsed((current) => !current)}
-                onToggleRawEventsSection={() => setRawEventsSectionCollapsed((current) => !current)}
-                onStoryChange={setStory}
-                onSubmit={onSubmit}
-                onCancelRequest={cancelCurrentRequest}
-                onGraphModeChange={setGraphMode}
-                onCharacterEdgeStyleChange={setCharacterEdgeStyle}
-                onIncludeSequenceEdgesChange={setIncludeSequenceEdges}
-                onUsePronounResolverChange={setUsePronounResolver}
-                onToggleResolverDebug={setShowResolverDebug}
-                onGeneratePreview={onGeneratePreview}
-              />
+              <div
+                id="input-panel"
+                role={isMobile ? "tabpanel" : undefined}
+                aria-labelledby={isMobile ? "input-tab" : undefined}
+                className={showMobileInput ? "block" : "hidden"}
+              >
+                <LeftControlPanel
+                  width={isMobile ? "100%" : leftPanelWidth}
+                  isMobile={isMobile}
+                  story={story}
+                  loading={loading}
+                  elapsedLabel={formatElapsedMs(elapsedMs)}
+                  graphMode={graphMode}
+                  characterEdgeStyle={characterEdgeStyle}
+                  includeSequenceEdges={includeSequenceEdges}
+                  usePronounResolver={usePronounResolver}
+                  showResolverDebug={showResolverDebug}
+                  resolvingPreview={resolvingPreview}
+                  resolvedPreview={resolvedPreview}
+                  resolverPreviewStats={resolverPreviewStats}
+                  resolverPreviewMessage={resolverPreviewMessage}
+                  allowResolverDebug={allowResolverDebug}
+                  error={error}
+                  showLargeGraphWarning={showLargeGraphWarning}
+                  blockGraphRender={blockGraphRender}
+                  eventsCount={events.length}
+                  graphEdgesCount={graph.edges.length}
+                  issuesTotal={issuesTotal}
+                  graphMeta={graph.meta}
+                  rawEventsJson={JSON.stringify(events, null, 2)}
+                  storySectionCollapsed={storySectionCollapsed}
+                  graphSettingsSectionCollapsed={graphSettingsSectionCollapsed}
+                  advancedSectionCollapsed={advancedSectionCollapsed}
+                  rawEventsSectionCollapsed={rawEventsSectionCollapsed}
+                  onToggleStorySection={() => setStorySectionCollapsed((current) => !current)}
+                  onToggleGraphSettingsSection={() => setGraphSettingsSectionCollapsed((current) => !current)}
+                  onToggleAdvancedSection={() => setAdvancedSectionCollapsed((current) => !current)}
+                  onToggleRawEventsSection={() => setRawEventsSectionCollapsed((current) => !current)}
+                  onStoryChange={setStory}
+                  onSubmit={onSubmit}
+                  onCancelRequest={cancelCurrentRequest}
+                  onGraphModeChange={setGraphMode}
+                  onCharacterEdgeStyleChange={setCharacterEdgeStyle}
+                  onIncludeSequenceEdgesChange={setIncludeSequenceEdges}
+                  onUsePronounResolverChange={setUsePronounResolver}
+                  onToggleResolverDebug={setShowResolverDebug}
+                  onGeneratePreview={onGeneratePreview}
+                />
+              </div>
             )}
 
-            {!leftPanelCollapsed ? (
+            {!leftPanelCollapsed && !isMobile ? (
               <button
                 type="button"
                 onMouseDown={startResize("left")}
@@ -500,14 +601,22 @@ export default function Home() {
               />
             ) : null}
 
-            <GraphPanel
-              graphMode={graphMode}
-              blockGraphRender={blockGraphRender}
-              nodesToRender={nodesToRender}
-              edgesToRender={edgesToRender}
-            />
+            <div
+              id="graph-panel"
+              role={isMobile ? "tabpanel" : undefined}
+              aria-labelledby={isMobile ? "graph-tab" : undefined}
+              className={showMobileGraph ? "block min-h-[420px] lg:flex-1 lg:min-h-0" : "hidden"}
+            >
+              <GraphPanel
+                graphMode={graphMode}
+                blockGraphRender={blockGraphRender}
+                nodesToRender={nodesToRender}
+                edgesToRender={edgesToRender}
+                isMobile={isMobile}
+              />
+            </div>
 
-            {!rightPanelIsCollapsed && hasCompletedAnalysis ? (
+            {!rightPanelIsCollapsed && hasCompletedAnalysis && !isMobile ? (
               <button
                 type="button"
                 onMouseDown={startResize("right")}
@@ -516,23 +625,31 @@ export default function Home() {
               />
             ) : null}
 
-            <RightDiagnosticsPanel
-              collapsed={rightPanelIsCollapsed}
-              railWidth={panelWidths.rail}
-              width={rightPanelWidth}
-              hasCompletedAnalysis={hasCompletedAnalysis}
-              requestId={requestId}
-              events={events}
-              graphNodesCount={graph.nodes.length}
-              graphEdgesCount={graph.edges.length}
-              meta={graph.meta}
-              severityFilter={severityFilter}
-              categoryFilter={categoryFilter}
-              eventIdToIndex={eventIdToIndex}
-              onExpand={handleExpandRight}
-              onSeverityFilterChange={setSeverityFilter}
-              onCategoryFilterChange={setCategoryFilter}
-            />
+            <div
+              id="diagnostics-panel"
+              role={isMobile ? "tabpanel" : undefined}
+              aria-labelledby={isMobile ? "diagnostics-tab" : undefined}
+              className={showMobileDiagnostics ? "block" : "hidden"}
+            >
+              <RightDiagnosticsPanel
+                collapsed={isMobile ? false : rightPanelIsCollapsed}
+                railWidth={panelWidths.rail}
+                width={isMobile ? "100%" : rightPanelWidth}
+                isMobile={isMobile}
+                hasCompletedAnalysis={hasCompletedAnalysis}
+                requestId={requestId}
+                events={events}
+                graphNodesCount={graph.nodes.length}
+                graphEdgesCount={graph.edges.length}
+                meta={graph.meta}
+                severityFilter={severityFilter}
+                categoryFilter={categoryFilter}
+                eventIdToIndex={eventIdToIndex}
+                onExpand={handleExpandRight}
+                onSeverityFilterChange={setSeverityFilter}
+                onCategoryFilterChange={setCategoryFilter}
+              />
+            </div>
           </div>
         </div>
       </div>

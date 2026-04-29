@@ -7,7 +7,8 @@ import { GraphControls } from "./GraphControls";
 import type { PreviewStats, UiError } from "./types";
 
 type LeftControlPanelProps = {
-  width: number;
+  width: number | string;
+  isMobile: boolean;
   story: string;
   loading: boolean;
   elapsedLabel: string;
@@ -50,7 +51,10 @@ type LeftControlPanelProps = {
 
 export function LeftControlPanel(props: LeftControlPanelProps) {
   return (
-    <section className="overflow-auto pr-1" style={{ width: props.width }}>
+    <section
+      className={`overflow-auto ${props.isMobile ? "pr-0" : "pr-1"}`}
+      style={{ width: props.width }}
+    >
       <div className="rounded-2xl border border-white/10 bg-[#0d1425]/90 shadow-[0_16px_30px_-20px_rgba(59,130,246,0.5)]">
         <div className="border-b border-white/10 p-3">
           <div className="mb-2.5 flex items-center justify-between gap-2">
@@ -80,7 +84,7 @@ export function LeftControlPanel(props: LeftControlPanelProps) {
             <form className="space-y-3" onSubmit={props.onSubmit}>
               <textarea
                 id="story-input"
-                className="h-56 w-full rounded-xl border border-white/10 bg-black/25 p-3 font-mono text-sm"
+                className="h-56 w-full rounded-xl border border-white/10 bg-black/25 p-3 font-mono text-sm lg:h-56"
                 value={props.story}
                 onChange={(event) => props.onStoryChange(event.target.value)}
                 maxLength={appLimits.maxStoryChars}

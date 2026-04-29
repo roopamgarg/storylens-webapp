@@ -8,6 +8,7 @@ type GraphPanelProps = {
   blockGraphRender: boolean;
   nodesToRender: Node<GraphNodeData>[];
   edgesToRender: Edge<GraphEdgeData>[];
+  isMobile: boolean;
 };
 
 export function GraphPanel(props: GraphPanelProps) {
@@ -24,7 +25,11 @@ export function GraphPanel(props: GraphPanelProps) {
           </div>
         </div>
       </div>
-      <div className="h-[500px] rounded-xl border border-white/10 bg-black/25 lg:h-[calc(100%-42px)]">
+      <div
+        className={`rounded-xl border border-white/10 bg-black/25 ${
+          props.isMobile ? "h-[58vh] min-h-[360px]" : "h-[500px] lg:h-[calc(100%-42px)]"
+        }`}
+      >
         {props.blockGraphRender ? (
           <div className="flex h-full items-center justify-center text-zinc-400">
             Graph hidden due to event volume.
