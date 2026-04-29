@@ -314,6 +314,9 @@ export default function Home() {
 
       setEvents(parsedResponse.data.events);
       setRequestId(parsedResponse.data.requestId);
+      if (isMobile) {
+        setActiveMobileSection("graph");
+      }
     } catch {
       setError({
         code: "NETWORK_ERROR",
