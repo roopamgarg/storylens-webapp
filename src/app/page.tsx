@@ -608,7 +608,7 @@ export default function Home() {
               id="graph-panel"
               role={isMobile ? "tabpanel" : undefined}
               aria-labelledby={isMobile ? "graph-tab" : undefined}
-              className={showMobileGraph ? "block min-h-[420px] lg:flex-1 lg:min-h-0" : "hidden"}
+              className={showMobileGraph ? "block min-h-[420px] lg:flex lg:flex-1 lg:min-h-0" : "hidden"}
             >
               <GraphPanel
                 graphMode={graphMode}

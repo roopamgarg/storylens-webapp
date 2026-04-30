@@ -13,7 +13,7 @@ type GraphPanelProps = {
 
 export function GraphPanel(props: GraphPanelProps) {
   return (
-    <section className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-[#0d1425]/90 p-2.5 lg:overflow-hidden">
+    <section className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-[#0d1425]/90 p-2.5 lg:flex lg:h-full lg:flex-col lg:overflow-hidden">
       <div className="mb-2 flex items-center justify-between gap-3 px-1">
         <div>
           <h2 className="text-base font-semibold">Event Graph</h2>
