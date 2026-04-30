@@ -5,6 +5,9 @@
 `web-app` is a standalone Next.js application used to test extraction-to-graph workflows for story narratives.
 It integrates with `llm-layer` over HTTP via a server-side proxy route and includes a deterministic pronoun-resolution subsystem used for observability, debug preview, and optional extraction-time story substitution.
 Graph rendering supports two client-side modes over the same extracted event payload: timeline and character relations.
+The route model is split into:
+- `/` marketing landing page
+- `/app` interactive checker application
 
 Core goals:
 
@@ -17,6 +20,15 @@ Core goals:
 ## Components
 
 - `src/app/page.tsx`
+  - Server-rendered marketing landing page with a screenshot-driven hero.
+  - Uses a static graph image asset (`public/landing-graph-design.png`) for deterministic visual parity across breakpoints.
+  - Primary CTA routes users to `/app`.
+
+- `src/app/app/page.tsx`
+  - Route entry for the interactive checker experience.
+  - Owns app-specific metadata and renders the extracted client module.
+
+- `src/app/components/story-checker/StoryCheckerPage.tsx`
   - Client UI for story input, submission, cancel flow, diagnostics, and graph rendering.
   - Includes a default-on extraction toggle (`usePronounResolver`) and a separate Debug-only pronoun preview panel with explicit `Generate Preview` trigger.
 
@@ -133,7 +145,7 @@ The graph pipeline now includes a deterministic diagnostics stage that classifie
     - `ruleReadiness[]`
   - Applies severity-based highlighting to implicated nodes and edges.
 
-- `src/app/page.tsx`
+- `src/app/components/story-checker/StoryCheckerPage.tsx`
   - Three-column layout on desktop:
     - left: story input/control panel
     - center: graph canvas

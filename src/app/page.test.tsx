@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 
-import { resolveGraphRenderState } from "@/app/page";
+import LandingPage from "@/app/page";
+import { resolveGraphRenderState } from "@/app/components/story-checker/StoryCheckerPage";
 import type { GraphTransformMeta } from "@/lib/graph-transform";
 
 describe("resolveGraphRenderState", () => {
@@ -48,5 +50,17 @@ describe("resolveGraphRenderState", () => {
     const state = resolveGraphRenderState("character", 40, undefined);
     expect(state.showLargeGraphWarning).toBe(false);
     expect(state.blockGraphRender).toBe(false);
+  });
+});
+
+describe("landing page", () => {
+  it("renders hero copy, graph image, and primary cta", () => {
+    const html = renderToStaticMarkup(<LandingPage />);
+
+    expect(html).toContain("Paste a story.");
+    expect(html).toContain("See what breaks.");
+    expect(html).toContain("%2Flanding-graph-design.png");
+    expect(html).toContain("href=\"/app\"");
+    expect(html).toContain("No credit card required.");
   });
 });
